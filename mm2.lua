@@ -9,6 +9,8 @@ local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 -- Enable teleportation and noclip by default
 local teleportEnabled = false
 local noclipEnabled = true  -- Auto-enabled
+local tweenSpeed = 0.3      -- Default movement speed
+local pickupDelay = 0       -- Default delay between coin pickups
 
 -- Function to enable Noclip
 local function enableNoclip()
@@ -58,17 +60,22 @@ local function tweenToCoin(coin)
     if not coin then return end
     local targetCFrame = coin.CFrame + Vector3.new(0, 3, 0)  -- Slightly above the coin for floating effect
 
-    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)  -- Fast and smooth
+    local tweenInfo = TweenInfo.new(tweenSpeed, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
     local tween = TweenService:Create(humanoidRootPart, tweenInfo, {CFrame = targetCFrame})
     tween:Play()
+
+    -- Wait for tween to complete before moving to the next coin (optional)
+    task.wait(tweenSpeed + pickupDelay)
 end
 
 -- Function to teleport continuously to coins
 local function teleportToCoinLoop()
-    if not teleportEnabled then return end
-    local nearestCoin = findNearestCoin()
-    if nearestCoin then
-        tweenToCoin(nearestCoin)
+    while teleportEnabled do
+        local nearestCoin = findNearestCoin()
+        if nearestCoin then
+            tweenToCoin(nearestCoin)
+        end
+        task.wait(pickupDelay)  -- Wait before teleporting again
     end
 end
 
@@ -80,8 +87,8 @@ local function createGUI()
     ScreenGui.Parent = player:FindFirstChildOfClass("PlayerGui") or player.PlayerGui
 
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(0, 200, 0, 150)
-    Frame.Position = UDim2.new(0.5, -100, 0.5, -50)
+    Frame.Size = UDim2.new(0, 200, 0, 200)
+    Frame.Position = UDim2.new(0.5, -100, 0.5, -100)
     Frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     Frame.BorderSizePixel = 0
     Frame.Parent = ScreenGui
@@ -100,7 +107,7 @@ local function createGUI()
     -- Teleport Toggle Button
     local TeleportButton = Instance.new("TextButton")
     TeleportButton.Size = UDim2.new(0.8, 0, 0, 40)
-    TeleportButton.Position = UDim2.new(0.1, 0, 0.3, 0)
+    TeleportButton.Position = UDim2.new(0.1, 0, 0.2, 0)
     TeleportButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
     TeleportButton.Text = "Teleport OFF"
     TeleportButton.TextColor3 = Color3.new(1, 1, 1)
@@ -108,16 +115,25 @@ local function createGUI()
     TeleportButton.Font = Enum.Font.SourceSansBold
     TeleportButton.Parent = Frame
 
-    -- Noclip Toggle Button
-    local NoclipButton = Instance.new("TextButton")
-    NoclipButton.Size = UDim2.new(0.8, 0, 0, 40)
-    NoclipButton.Position = UDim2.new(0.1, 0, 0.6, 0)
-    NoclipButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-    NoclipButton.Text = "Noclip ON"  -- Always on by default
-    NoclipButton.TextColor3 = Color3.new(1, 1, 1)
-    NoclipButton.TextSize = 14
-    NoclipButton.Font = Enum.Font.SourceSansBold
-    NoclipButton.Parent = Frame
+    -- Speed Input Box
+    local SpeedBox = Instance.new("TextBox")
+    SpeedBox.Size = UDim2.new(0.8, 0, 0, 30)
+    SpeedBox.Position = UDim2.new(0.1, 0, 0.5, 0)
+    SpeedBox.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    SpeedBox.Text = tostring(tweenSpeed)
+    SpeedBox.TextColor3 = Color3.new(1, 1, 1)
+    SpeedBox.TextSize = 14
+    SpeedBox.Parent = Frame
+
+    -- Delay Input Box
+    local DelayBox = Instance.new("TextBox")
+    DelayBox.Size = UDim2.new(0.8, 0, 0, 30)
+    DelayBox.Position = UDim2.new(0.1, 0, 0.7, 0)
+    DelayBox.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    DelayBox.Text = tostring(pickupDelay)
+    DelayBox.TextColor3 = Color3.new(1, 1, 1)
+    DelayBox.TextSize = 14
+    DelayBox.Parent = Frame
 
     -- Ensure Teleport Button is Always Clickable
     TeleportButton.MouseButton1Click:Connect(function()
@@ -125,15 +141,32 @@ local function createGUI()
         if teleportEnabled then
             TeleportButton.Text = "Teleport ON"
             TeleportButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+            teleportToCoinLoop()
         else
             TeleportButton.Text = "Teleport OFF"
             TeleportButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
         end
     end)
 
-    -- Prevent Button from Becoming Unclickable
-    TeleportButton.Parent = Frame
-    NoclipButton.Parent = Frame
+    -- Speed Input Box Changes
+    SpeedBox.FocusLost:Connect(function()
+        local speedValue = tonumber(SpeedBox.Text)
+        if speedValue and speedValue > 0 then
+            tweenSpeed = speedValue
+        else
+            SpeedBox.Text = tostring(tweenSpeed)  -- Reset to previous valid value
+        end
+    end)
+
+    -- Delay Input Box Changes
+    DelayBox.FocusLost:Connect(function()
+        local delayValue = tonumber(DelayBox.Text)
+        if delayValue and delayValue >= 0 then
+            pickupDelay = delayValue
+        else
+            DelayBox.Text = tostring(pickupDelay)  -- Reset to previous valid value
+        end
+    end)
 
     return ScreenGui
 end
@@ -155,11 +188,4 @@ local function onCharacterAdded(newCharacter)
 end
 player.CharacterAdded:Connect(onCharacterAdded)
 
--- Auto-Teleport Loop
-RunService.Heartbeat:Connect(function()
-    if teleportEnabled and character and character:FindFirstChild("HumanoidRootPart") then
-        teleportToCoinLoop()
-    end
-end)
-
-print("MM2 Candy Auto Farm with Instant Tween, Auto-Noclip, and Floating loaded.")
+print("MM2 Candy Auto Farm with Speed & Delay Controls loaded.")
