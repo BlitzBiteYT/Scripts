@@ -6,9 +6,9 @@ local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
--- Enable teleportation and noclip
+-- Enable teleportation and noclip by default
 local teleportEnabled = false
-local noclipEnabled = false
+local noclipEnabled = true  -- Auto-enabled
 
 -- Function to enable Noclip
 local function enableNoclip()
@@ -22,13 +22,7 @@ local function enableNoclip()
         end
     end)
 end
-
--- Function to make the player "fake dead"
-local function fakeDeath()
-    if humanoidRootPart then
-        humanoidRootPart.CFrame = humanoidRootPart.CFrame * CFrame.Angles(math.rad(90), 0, 0) -- Rotates the player sideways
-    end
-end
+enableNoclip()  -- Start Noclip immediately
 
 -- Function to find the CoinContainer
 local function findCoinContainer()
@@ -44,13 +38,10 @@ end
 -- Function to find the nearest coin (Infinite radius)
 local function findNearestCoin()
     local coinContainer = findCoinContainer()
-    if not coinContainer then
-        print("CoinContainer not found")
-        return nil
-    end
+    if not coinContainer then return nil end
 
     local nearestCoin = nil
-    local nearestDistance = math.huge  -- Infinite distance
+    local nearestDistance = math.huge
 
     for _, coin in pairs(coinContainer:GetChildren()) do
         local distance = (coin.Position - humanoidRootPart.Position).Magnitude
@@ -70,13 +61,12 @@ local function teleportToCoin(coin)
     return tween
 end
 
--- Function to teleport to any available coin
+-- Function to teleport continuously to coins
 local function teleportToCoinLoop()
     if not teleportEnabled then return end
 
     local nearestCoin = findNearestCoin()
     if nearestCoin then
-        print("Teleporting to coin...")
         local tween = teleportToCoin(nearestCoin)
         tween.Completed:Wait()
     end
@@ -87,7 +77,7 @@ local function createGUI()
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "MM2CandyAutoFarmGUI"
     ScreenGui.ResetOnSpawn = false
-    ScreenGui.Parent = player.PlayerGui
+    ScreenGui.Parent = player:FindFirstChildOfClass("PlayerGui") or player.PlayerGui
 
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(0, 200, 0, 150)
@@ -97,7 +87,6 @@ local function createGUI()
     Frame.Parent = ScreenGui
     Frame.Active = true
     Frame.Draggable = true
-    Frame.Selectable = true
 
     local Title = Instance.new("TextLabel")
     Title.Size = UDim2.new(1, 0, 0, 30)
@@ -123,38 +112,28 @@ local function createGUI()
     local NoclipButton = Instance.new("TextButton")
     NoclipButton.Size = UDim2.new(0.8, 0, 0, 40)
     NoclipButton.Position = UDim2.new(0.1, 0, 0.6, 0)
-    NoclipButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-    NoclipButton.Text = "Noclip OFF"
+    NoclipButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+    NoclipButton.Text = "Noclip ON"  -- Always on by default
     NoclipButton.TextColor3 = Color3.new(1, 1, 1)
     NoclipButton.TextSize = 14
     NoclipButton.Font = Enum.Font.SourceSansBold
     NoclipButton.Parent = Frame
 
-    -- Toggle Teleportation
-    local function toggleTeleport()
+    -- Ensure Teleport Button is Always Clickable
+    TeleportButton.MouseButton1Click:Connect(function()
         teleportEnabled = not teleportEnabled
         if teleportEnabled then
-            TeleportButton.Tej= "Teleport ON"
+            TeleportButton.Text = "Teleport ON"
             TeleportButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
         else
             TeleportButton.Text = "Teleport OFF"
             TeleportButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
         end
-    end
-    TeleportButton.MouseButton1Click:Connect(toggleTeleport)
+    end)
 
-    -- Toggle Noclip
-    local function toggleNoclip()
-        noclipEnabled = not noclipEnabled
-        if noclipEnabled then
-            NoclipButton.Text = "Noclip ON"
-            NoclipButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-        else
-            NoclipButton.Text = "Noclip OFF"
-            NoclipButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-        end
-    end
-    NoclipButton.MouseButton1Click:Connect(toggleNoclip)
+    -- Prevent Button from Becoming Unclickable
+    TeleportButton.Parent = Frame
+    NoclipButton.Parent = Frame
 
     return ScreenGui
 end
@@ -162,22 +141,19 @@ end
 -- Create GUI
 local gui = createGUI()
 
--- Handle Character Respawn
+-- Ensure GUI is Always Created on Respawn
 local function onCharacterAdded(newCharacter)
     character = newCharacter
     humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-    
+
     if not player.PlayerGui:FindFirstChild("MM2CandyAutoFarmGUI") then
         gui = createGUI()
     end
-    
-    -- Ensure noclip is applied again on respawn
+
+    -- Ensure noclip stays on after respawn
     enableNoclip()
 end
 player.CharacterAdded:Connect(onCharacterAdded)
-
--- Start Noclip
-enableNoclip()
 
 -- Auto-Teleport Loop
 RunService.Heartbeat:Connect(function()
@@ -186,7 +162,4 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Apply Fake Death Effect
-fakeDeath()
-
-print("MM2 Candy Auto Farm with Noclip & Fake Death loaded.")
+print("MM2 Candy Auto Farm with Auto-Noclip and Fixed Teleport Button loaded.")
