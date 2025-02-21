@@ -53,22 +53,22 @@ local function findNearestCoin()
     return nearestCoin
 end
 
--- Function to teleport to a coin
-local function teleportToCoin(coin)
-    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local tween = TweenService:Create(humanoidRootPart, tweenInfo, {CFrame = coin.CFrame})
+-- Function to smoothly move to a coin with floating effect
+local function tweenToCoin(coin)
+    if not coin then return end
+    local targetCFrame = coin.CFrame + Vector3.new(0, 3, 0)  -- Slightly above the coin for floating effect
+
+    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)  -- Fast and smooth
+    local tween = TweenService:Create(humanoidRootPart, tweenInfo, {CFrame = targetCFrame})
     tween:Play()
-    return tween
 end
 
 -- Function to teleport continuously to coins
 local function teleportToCoinLoop()
     if not teleportEnabled then return end
-
     local nearestCoin = findNearestCoin()
     if nearestCoin then
-        local tween = teleportToCoin(nearestCoin)
-        tween.Completed:Wait()
+        tweenToCoin(nearestCoin)
     end
 end
 
@@ -162,4 +162,4 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-print("MM2 Candy Auto Farm with Auto-Noclip and Fixed Teleport Button loaded.")
+print("MM2 Candy Auto Farm with Instant Tween, Auto-Noclip, and Floating loaded.")
