@@ -1,183 +1,135 @@
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
+local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
+local Window = OrionLib:MakeWindow({Name = "Tp Player", HidePremium = false, SaveConfig = true, ConfigFolder = "OrionTpPlayer"})
 
-local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local Tab = Window:MakeTab({Name = "Misc", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+local Section = Tab:AddSection({Name = "Teleport"})
 
--- Enable teleportation and noclip by default
-local teleportEnabled = false
-local noclipEnabled = true  -- Auto-enabled
+players = {}
+playerMap = {}
 
---------------------------------------------------
--- Noclip Functionality
---------------------------------------------------
-local function enableNoclip()
-    RunService.Stepped:Connect(function()
-        if noclipEnabled and character then
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
+for i, v in pairs(game:GetService("Players"):GetChildren()) do
+   table.insert(players, v.DisplayName)
+   playerMap[v.DisplayName] = v.Name -- Store mapping of DisplayName to Username
+end
+
+Section:AddDropdown({
+    Name = "Select Player",
+    Default = "",
+    Options = players,
+    Callback = function(selected)
+        Select = playerMap[selected] -- Convert display name back to username
+    end
+})
+
+local rootpart = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+Section:AddButton({
+    Name = "Refresh",
+    Callback = function()
+        table.clear(players)
+        table.clear(playerMap)
+        for i, v in ipairs(game.Players:GetChildren()) do
+            table.insert(players, v.DisplayName)
+            playerMap[v.DisplayName] = v.Name
+        end
+    end
+})
+
+Section:AddButton({
+    Name = "Teleport",
+    Callback = function()
+        if Select then
+            local targetPlayer = game:GetService("Players"):FindFirstChild(Select)
+            if targetPlayer and targetPlayer.Character then
+                local targetRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if rootpart and targetRootPart then
+                    rootpart.CFrame = targetRootPart.CFrame
                 end
             end
         end
-    end)
-end
-enableNoclip()  -- Start noclip immediately
+    end
+})
 
---------------------------------------------------
--- Coin Detection Functions
---------------------------------------------------
-local function findCoinContainer()
-    for _, child in pairs(workspace:GetChildren()) do
-        local coinContainer = child:FindFirstChild("CoinContainer")
-        if coinContainer then
-            return coinContainer
+Section:AddTextbox({
+    Name = "TP to Player",
+    Default = "",
+    TextDisappear = true,
+    Callback = function(name)
+        local plr
+        for _, player in ipairs(game.Players:GetPlayers()) do
+            if string.sub(player.DisplayName:lower(), 1, #name) == name:lower() or
+               string.sub(player.Name:lower(), 1, #name) == name:lower() then
+                plr = player
+                break 
+            end
+        end
+
+        if plr then
+            local plrootpart = plr.Character:FindFirstChild("HumanoidRootPart")
+            if rootpart and plrootpart then
+                rootpart.CFrame = plrootpart.CFrame * CFrame.new(0, 0, -5)
+            end
         end
     end
-    return nil
-end
+})
 
-local function findNearestCoin()
-    local coinContainer = findCoinContainer()
-    if not coinContainer then return nil end
+-- Toggle Button (Movable)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = game.CoreGui
 
-    local nearestCoin = nil
-    local nearestDistance = math.huge
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Parent = ScreenGui
+ToggleButton.Size = UDim2.new(0, 120, 0, 50)
+ToggleButton.Position = UDim2.new(0, 10, 0, 10) -- Initial Position
+ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.Text = "Show UI"
 
-    for _, coin in pairs(coinContainer:GetChildren()) do
-        local distance = (coin.Position - humanoidRootPart.Position).Magnitude
-        if distance < nearestDistance then
-            nearestCoin = coin
-            nearestDistance = distance
-        end
-    end
-    return nearestCoin
-end
+-- Make Button Draggable
+local UIS = game:GetService("UserInputService")
+local dragging, dragInput, startPos, startMousePos
 
---------------------------------------------------
--- Tweening Functions
---------------------------------------------------
--- Generic tweening function that smoothly moves a part to a target CFrame.
-local function tweenToTarget(part, targetCFrame, duration, easingStyle, easingDirection)
-    duration = duration or 0.3
-    easingStyle = easingStyle or Enum.EasingStyle.Linear
-    easingDirection = easingDirection or Enum.EasingDirection.Out
-
-    local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection)
-    local tween = TweenService:Create(part, tweenInfo, {CFrame = targetCFrame})
-    tween:Play()
-    
-    tween.Completed:Connect(function(status)
-        print("Tween completed with status:", status)
-    end)
-end
-
--- Function to tween to a coin with a floating effect.
-local function tweenToCoin(coin, humanoidRootPart)
-    if not coin or not humanoidRootPart then return end
-    local targetCFrame = coin.CFrame + Vector3.new(0, 3, 0)  -- Offset upward for a floating effect
-    tweenToTarget(humanoidRootPart, targetCFrame, 0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-end
-
---------------------------------------------------
--- Teleportation Loop
---------------------------------------------------
-local function teleportToCoinLoop()
-    if not teleportEnabled then return end
-    local nearestCoin = findNearestCoin()
-    if nearestCoin then
-        tweenToCoin(nearestCoin, humanoidRootPart)
-    end
-end
-
---------------------------------------------------
--- GUI Creation
---------------------------------------------------
-local function createGUI()
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "MM2CandyAutoFarmGUI"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.Parent = player:FindFirstChildOfClass("PlayerGui") or player.PlayerGui
-
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(0, 200, 0, 150)
-    Frame.Position = UDim2.new(0.5, -100, 0.5, -50)
-    Frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    Frame.BorderSizePixel = 0
-    Frame.Parent = ScreenGui
-    Frame.Active = true
-    Frame.Draggable = true
-
-    local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, 0, 0, 30)
-    Title.BackgroundTransparency = 1
-    Title.Text = "MM2 Candy Auto Farm"
-    Title.TextColor3 = Color3.new(1, 1, 1)
-    Title.TextSize = 18
-    Title.Font = Enum.Font.SourceSansBold
-    Title.Parent = Frame
-
-    local TeleportButton = Instance.new("TextButton")
-    TeleportButton.Size = UDim2.new(0.8, 0, 0, 40)
-    TeleportButton.Position = UDim2.new(0.1, 0, 0.3, 0)
-    TeleportButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-    TeleportButton.Text = "Teleport OFF"
-    TeleportButton.TextColor3 = Color3.new(1, 1, 1)
-    TeleportButton.TextSize = 14
-    TeleportButton.Font = Enum.Font.SourceSansBold
-    TeleportButton.Parent = Frame
-
-    local NoclipButton = Instance.new("TextButton")
-    NoclipButton.Size = UDim2.new(0.8, 0, 0, 40)
-    NoclipButton.Position = UDim2.new(0.1, 0, 0.6, 0)
-    NoclipButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-    NoclipButton.Text = "Noclip ON"  -- Always on by default
-    NoclipButton.TextColor3 = Color3.new(1, 1, 1)
-    NoclipButton.TextSize = 14
-    NoclipButton.Font = Enum.Font.SourceSansBold
-    NoclipButton.Parent = Frame
-
-    TeleportButton.MouseButton1Click:Connect(function()
-        teleportEnabled = not teleportEnabled
-        if teleportEnabled then
-            TeleportButton.Text = "Teleport ON"
-            TeleportButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-        else
-            TeleportButton.Text = "Teleport OFF"
-            TeleportButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-        end
-    end)
-
-    return ScreenGui
-end
-
-local gui = createGUI()
-
---------------------------------------------------
--- Character Respawn Handling
---------------------------------------------------
-local function onCharacterAdded(newCharacter)
-    character = newCharacter
-    humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-
-    if not player.PlayerGui:FindFirstChild("MM2CandyAutoFarmGUI") then
-        gui = createGUI()
-    end
-
-    -- Ensure noclip stays active on respawn.
-    enableNoclip()
-end
-player.CharacterAdded:Connect(onCharacterAdded)
-
---------------------------------------------------
--- Continuous Teleport Loop
---------------------------------------------------
-RunService.Heartbeat:Connect(function()
-    if teleportEnabled and character and character:FindFirstChild("HumanoidRootPart") then
-        teleportToCoinLoop()
+ToggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        startPos = ToggleButton.Position
+        startMousePos = input.Position
     end
 end)
 
-print("MM2 Candy Auto Farm with Instant Tween, Auto-Noclip, and Floating loaded.")
+ToggleButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+
+ToggleButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - startMousePos
+        ToggleButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Button Functionality to Show/Hide UI
+local uiVisible = true
+ToggleButton.MouseButton1Click:Connect(function()
+    uiVisible = not uiVisible
+    if uiVisible then
+        OrionLib:MakeNotification({Name = "UI", Content = "UI Opened", Time = 2})
+        Window.Parent.Enabled = true
+        ToggleButton.Text = "Hide UI"
+    else
+        OrionLib:MakeNotification({Name = "UI", Content = "UI Closed", Time = 2})
+        Window.Parent.Enabled = false
+        ToggleButton.Text = "Show UI"
+    end
+end)
+
+-- Initialize Orion UI
+OrionLib:Init()
