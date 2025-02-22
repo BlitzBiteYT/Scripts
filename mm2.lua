@@ -1,20 +1,27 @@
-local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
-local Window = OrionLib:MakeWindow({Name = "Tp Player", HidePremium = false, SaveConfig = true, ConfigFolder = "OrionTpPlayer"})
+local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source"))()
 
-local Tab = Window:MakeTab({Name = "Misc", Icon = "rbxassetid://4483345998", PremiumOnly = false})
-local Section = Tab:AddSection({Name = "Teleport"})
+local Window = Rayfield:CreateWindow({
+    Name = "Tp Player",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "Please wait",
+    ConfigurationSaving = { Enabled = true, FolderName = "RayfieldConfig" },
+    KeySystem = false
+})
 
-players = {}
-playerMap = {}
+local Tab = Window:CreateTab("Misc", 4483345998) -- Using an icon
+local Section = Tab:CreateSection("Teleport")
 
-for i, v in pairs(game:GetService("Players"):GetChildren()) do
+local players = {}
+local playerMap = {}
+
+for _, v in pairs(game:GetService("Players"):GetChildren()) do
    table.insert(players, v.DisplayName)
    playerMap[v.DisplayName] = v.Name -- Store mapping of DisplayName to Username
 end
 
-Section:AddDropdown({
+local Select
+Section:CreateDropdown({
     Name = "Select Player",
-    Default = "",
     Options = players,
     Callback = function(selected)
         Select = playerMap[selected] -- Convert display name back to username
@@ -23,19 +30,19 @@ Section:AddDropdown({
 
 local rootpart = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 
-Section:AddButton({
+Section:CreateButton({
     Name = "Refresh",
     Callback = function()
         table.clear(players)
         table.clear(playerMap)
-        for i, v in ipairs(game.Players:GetChildren()) do
+        for _, v in ipairs(game.Players:GetChildren()) do
             table.insert(players, v.DisplayName)
             playerMap[v.DisplayName] = v.Name
         end
     end
 })
 
-Section:AddButton({
+Section:CreateButton({
     Name = "Teleport",
     Callback = function()
         if Select then
@@ -50,10 +57,10 @@ Section:AddButton({
     end
 })
 
-Section:AddTextbox({
+Section:CreateInput({
     Name = "TP to Player",
-    Default = "",
-    TextDisappear = true,
+    PlaceholderText = "Enter Player Name",
+    RemoveTextAfterFocusLost = true,
     Callback = function(name)
         local plr
         for _, player in ipairs(game.Players:GetPlayers()) do
@@ -80,7 +87,7 @@ ScreenGui.Parent = game.CoreGui
 local ToggleButton = Instance.new("TextButton")
 ToggleButton.Parent = ScreenGui
 ToggleButton.Size = UDim2.new(0, 120, 0, 50)
-ToggleButton.Position = UDim2.new(0, 10, 0, 10) -- Initial Position
+ToggleButton.Position = UDim2.new(0, 10, 0, 10)
 ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleButton.Text = "Show UI"
@@ -121,15 +128,14 @@ local uiVisible = true
 ToggleButton.MouseButton1Click:Connect(function()
     uiVisible = not uiVisible
     if uiVisible then
-        OrionLib:MakeNotification({Name = "UI", Content = "UI Opened", Time = 2})
-        Window.Parent.Enabled = true
+        Rayfield:Notify({Title = "UI", Content = "UI Opened", Duration = 2})
+        Window:SetVisibility(true)
         ToggleButton.Text = "Hide UI"
     else
-        OrionLib:MakeNotification({Name = "UI", Content = "UI Closed", Time = 2})
-        Window.Parent.Enabled = false
+        Rayfield:Notify({Title = "UI", Content = "UI Closed", Duration = 2})
+        Window:SetVisibility(false)
         ToggleButton.Text = "Show UI"
     end
 end)
 
--- Initialize Orion UI
-OrionLib:Init()
+Rayfield:LoadConfiguration()
