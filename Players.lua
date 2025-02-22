@@ -232,7 +232,7 @@ teleportButton.MouseButton1Click:Connect(function()
             if localChar and localChar:FindFirstChild("HumanoidRootPart") then
                 local localHRP = localChar.HumanoidRootPart
                 -- Teleport local player 5 studs behind the target using its LookVector (i.e. its back)
-                localHRP.CFrame = CFrame.new(targetHRP.Position - targetHRP.CFrame.LookVector * 5)
+                localHRP.CFrame = CFrame.new(targetHRP.Position - targetHRP.CFrame.LookVector * 0)
             end
         end
     else
@@ -265,7 +265,7 @@ followButton.MouseButton1Click:Connect(function()
                             local targetHRP = targetPlayer.Character.HumanoidRootPart
                             local localHRP = localChar.HumanoidRootPart
                             -- Continuously update local player's position to be 5 studs behind the target's back
-                            localHRP.CFrame = CFrame.new(targetHRP.Position - targetHRP.CFrame.LookVector * 5)
+                            localHRP.CFrame = CFrame.new(targetHRP.Position - targetHRP.CFrame.LookVector * 0)
                         else
                             if followConnection then
                                 followConnection:Disconnect()
@@ -478,4 +478,43 @@ local function animateGui(targetSize, showControls)
             followButton.Visible = false
             flingButton.Visible = false
             dropdownList.Visible = false
-            Minimi
+            MinimizeButton.Visible = false
+            MaximizeButton.Visible = true
+        end
+    end)
+end
+
+MinimizeButton.MouseButton1Down:Connect(function()
+    animateGui(UDim2.new(0, 320, 0, 40), false)  -- Minimized size (only header visible)
+end)
+
+MaximizeButton.MouseButton1Down:Connect(function()
+    animateGui(UDim2.new(0, 320, 0, 340), true)  -- Original size with all controls
+end)
+
+-- Draggable Functionality for the Header (supports mouse and touch)
+local dragging = false
+local dragStart, startPos
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+header.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
