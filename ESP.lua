@@ -64,7 +64,7 @@ local function InitializeMenu()
     ToggleButtonElements.Icon = Drawing.new("Text")
     ToggleButtonElements.Icon.Text = "≡"
     ToggleButtonElements.Icon.Size = 20
-    ToggleButtonElements.Icon.Position = Menu.ToggleButton.Position + V2New(10, 8)
+    ToggleButtonElements.Icon.Position = Menu.ToggleButton.Position + V2New(10, 20)
     ToggleButtonElements.Icon.Color = Color3.fromRGB(255, 255, 255)
     ToggleButtonElements.Icon.Visible = true
     ToggleButtonElements.Icon.Center = false
