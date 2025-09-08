@@ -1,5 +1,5 @@
 -- Modern ESP with Draggable Toggle Menu
--- Fixed version with visible UI
+-- Fixed version with working toggle button
 
 assert(Drawing, "Exploit not supported - Drawing API required")
 
@@ -33,7 +33,7 @@ local ESPConfig = {
 -- Menu state
 local Menu = {
     Open = false,
-    Position = V2New(50, 100),
+    Position = V2New(100, 100),
     Size = V2New(250, 300),
     Dragging = false,
     DragOffset = V2New(0, 0),
@@ -55,7 +55,7 @@ local function InitializeMenu()
     ToggleButtonElements.Background = Drawing.new("Square")
     ToggleButtonElements.Background.Visible = true
     ToggleButtonElements.Background.Filled = true
-    ToggleButtonElements.Background.Color = Color3.fromRGB(45, 45, 45)
+    ToggleButtonElements.Background.Color = Color3.fromRGB(60, 60, 60)
     ToggleButtonElements.Background.Transparency = 0.2
     ToggleButtonElements.Background.Thickness = 2
     ToggleButtonElements.Background.Size = Menu.ToggleButton.Size
@@ -64,7 +64,7 @@ local function InitializeMenu()
     ToggleButtonElements.Icon = Drawing.new("Text")
     ToggleButtonElements.Icon.Text = "≡"
     ToggleButtonElements.Icon.Size = 20
-    ToggleButtonElements.Icon.Position = Menu.ToggleButton.Position + V2New(110, 120)
+    ToggleButtonElements.Icon.Position = Menu.ToggleButton.Position + V2New(10, 8)
     ToggleButtonElements.Icon.Color = Color3.fromRGB(255, 255, 255)
     ToggleButtonElements.Icon.Visible = true
     ToggleButtonElements.Icon.Center = false
@@ -122,8 +122,6 @@ local function InitializeMenu()
     MenuElements.Options = {}
     
     for i, option in ipairs(options) do
-        local yPos = Menu.Position.Y + 40 + (i * 30)
-        
         -- Option text
         local text = Drawing.new("Text")
         text.Text = option.text
@@ -309,7 +307,7 @@ local function SetupInputHandlers()
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             -- Check if this was a click (not drag) on toggle button
             if Menu.ToggleButton.Dragging then
-                local dragDistance = (GetMouseLocation() - Menu.ToggleButton.DragOffset - Menu.ToggleButton.Position).Magnitude
+                local dragDistance = (mousePos - (Menu.ToggleButton.Position + Menu.ToggleButton.DragOffset)).Magnitude
                 
                 -- If minimal movement, treat as click
                 if dragDistance < 5 then
