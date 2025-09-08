@@ -1,5 +1,5 @@
 -- Modern ESP with Draggable Toggle Menu
--- Designed for Synapse X and other Roblox executors with Drawing API
+-- Fixed version with visible UI
 
 assert(Drawing, "Exploit not supported - Drawing API required")
 
@@ -33,7 +33,7 @@ local ESPConfig = {
 -- Menu state
 local Menu = {
     Open = false,
-    Position = V2New(50, 50),
+    Position = V2New(50, 100),
     Size = V2New(250, 300),
     Dragging = false,
     DragOffset = V2New(0, 0),
@@ -49,36 +49,17 @@ local Menu = {
 local MenuElements = {}
 local ToggleButtonElements = {}
 
--- Create rounded rectangle function
-local function RoundedRectangle(Properties)
-    local cornerRadius = Properties.CornerRadius or 5
-    local instance = Drawing.new("Square")
-    
-    instance.Visible = Properties.Visible or false
-    instance.Size = Properties.Size
-    instance.Position = Properties.Position
-    instance.Color = Properties.Color or Color3.new(1, 1, 1)
-    instance.Filled = Properties.Filled or false
-    instance.Thickness = Properties.Thickness or 1
-    instance.Transparency = Properties.Transparency or 1
-    
-    -- For simplicity, we'll just use a regular rectangle
-    -- A true rounded rectangle would require multiple drawing objects
-    return instance
-end
-
 -- Initialize menu
 local function InitializeMenu()
-    -- Toggle button (modern style)
-    ToggleButtonElements.Background = RoundedRectangle({
-        Position = Menu.ToggleButton.Position,
-        Size = Menu.ToggleButton.Size,
-        Color = Color3.fromRGB(45, 45, 45),
-        Filled = true,
-        Transparency = 0.8,
-        Visible = true,
-        CornerRadius = 8
-    })
+    -- Toggle button
+    ToggleButtonElements.Background = Drawing.new("Square")
+    ToggleButtonElements.Background.Visible = true
+    ToggleButtonElements.Background.Filled = true
+    ToggleButtonElements.Background.Color = Color3.fromRGB(45, 45, 45)
+    ToggleButtonElements.Background.Transparency = 0.2
+    ToggleButtonElements.Background.Thickness = 2
+    ToggleButtonElements.Background.Size = Menu.ToggleButton.Size
+    ToggleButtonElements.Background.Position = Menu.ToggleButton.Position
     
     ToggleButtonElements.Icon = Drawing.new("Text")
     ToggleButtonElements.Icon.Text = "≡"
@@ -90,26 +71,24 @@ local function InitializeMenu()
     ToggleButtonElements.Icon.Outline = true
     
     -- Menu background
-    MenuElements.Background = RoundedRectangle({
-        Position = Menu.Position,
-        Size = Menu.Size,
-        Color = Color3.fromRGB(35, 35, 40),
-        Filled = true,
-        Transparency = 0.9,
-        Visible = Menu.Open,
-        CornerRadius = 10
-    })
+    MenuElements.Background = Drawing.new("Square")
+    MenuElements.Background.Visible = Menu.Open
+    MenuElements.Background.Filled = true
+    MenuElements.Background.Color = Color3.fromRGB(35, 35, 40)
+    MenuElements.Background.Transparency = 0.1
+    MenuElements.Background.Thickness = 2
+    MenuElements.Background.Size = Menu.Size
+    MenuElements.Background.Position = Menu.Position
     
     -- Menu header
-    MenuElements.Header = RoundedRectangle({
-        Position = Menu.Position,
-        Size = V2New(Menu.Size.X, 30),
-        Color = Color3.fromRGB(25, 25, 30),
-        Filled = true,
-        Transparency = 0.95,
-        Visible = Menu.Open,
-        CornerRadius = 10
-    })
+    MenuElements.Header = Drawing.new("Square")
+    MenuElements.Header.Visible = Menu.Open
+    MenuElements.Header.Filled = true
+    MenuElements.Header.Color = Color3.fromRGB(25, 25, 30)
+    MenuElements.Header.Transparency = 0.2
+    MenuElements.Header.Thickness = 0
+    MenuElements.Header.Size = V2New(Menu.Size.X, 30)
+    MenuElements.Header.Position = Menu.Position
     
     -- Menu title
     MenuElements.Title = Drawing.new("Text")
@@ -155,26 +134,27 @@ local function InitializeMenu()
         text.Center = false
         
         -- Toggle box
-        local toggleBox = RoundedRectangle({
-            Position = Menu.Position + V2New(Menu.Size.X - 50, 40 + (i * 30)),
-            Size = V2New(30, 15),
-            Color = option.value and ESPConfig.TeamColor or Color3.fromRGB(80, 80, 80),
-            Filled = true,
-            Transparency = 0.8,
-            Visible = Menu.Open,
-            CornerRadius = 7
-        })
+        local toggleBox = Drawing.new("Square")
+        toggleBox.Visible = Menu.Open
+        toggleBox.Filled = true
+        toggleBox.Color = option.value and ESPConfig.TeamColor or Color3.fromRGB(80, 80, 80)
+        toggleBox.Transparency = 0.2
+        toggleBox.Thickness = 1
+        toggleBox.Size = V2New(30, 15)
+        toggleBox.Position = Menu.Position + V2New(Menu.Size.X - 50, 40 + (i * 30))
         
         -- Toggle indicator
-        local toggleIndicator = RoundedRectangle({
-            Position = option.value and (Menu.Position + V2New(Menu.Size.X - 35, 40 + (i * 30) + 2)) or (Menu.Position + V2New(Menu.Size.X - 50, 40 + (i * 30) + 2)),
-            Size = V2New(11, 11),
-            Color = Color3.fromRGB(255, 255, 255),
-            Filled = true,
-            Transparency = 1,
-            Visible = Menu.Open,
-            CornerRadius = 6
-        })
+        local toggleIndicator = Drawing.new("Circle")
+        toggleIndicator.Visible = Menu.Open
+        toggleIndicator.Filled = true
+        toggleIndicator.Color = Color3.fromRGB(255, 255, 255)
+        toggleIndicator.Transparency = 0
+        toggleIndicator.Thickness = 0
+        toggleIndicator.Radius = 5
+        toggleIndicator.NumSides = 12
+        toggleIndicator.Position = option.value and 
+            (Menu.Position + V2New(Menu.Size.X - 35, 40 + (i * 30) + 7)) or 
+            (Menu.Position + V2New(Menu.Size.X - 50, 40 + (i * 30) + 7))
         
         MenuElements.Options[option.key] = {
             Text = text,
@@ -214,12 +194,14 @@ local function UpdateMenuPosition()
     MenuElements.Title.Position = Menu.Position + V2New(10, 5)
     MenuElements.CloseButton.Position = Menu.Position + V2New(Menu.Size.X - 25, 5)
     
-    for i, (key, option) in pairs(MenuElements.Options) do
+    local i = 0
+    for key, option in pairs(MenuElements.Options) do
+        i = i + 1
         option.Text.Position = Menu.Position + V2New(20, 40 + (i * 30))
         option.Box.Position = Menu.Position + V2New(Menu.Size.X - 50, 40 + (i * 30))
         option.Indicator.Position = option.Value and 
-            (Menu.Position + V2New(Menu.Size.X - 35, 40 + (i * 30) + 2)) or 
-            (Menu.Position + V2New(Menu.Size.X - 50, 40 + (i * 30) + 2))
+            (Menu.Position + V2New(Menu.Size.X - 35, 40 + (i * 30) + 7)) or 
+            (Menu.Position + V2New(Menu.Size.X - 50, 40 + (i * 30) + 7))
     end
 end
 
@@ -238,10 +220,7 @@ local function ToggleOption(optionKey)
         
         -- Update visual state
         option.Box.Color = option.Value and ESPConfig.TeamColor or Color3.fromRGB(80, 80, 80)
-        option.Indicator.Position = option.Value and 
-            (Menu.Position + V2New(Menu.Size.X - 35, 0)) or 
-            (Menu.Position + V2New(Menu.Size.X - 50, 0))
-            
+        
         -- Adjust Y position based on option index
         local index = 0
         for i, key in pairs(MenuElements.Options) do
@@ -252,8 +231,8 @@ local function ToggleOption(optionKey)
         end
         
         option.Indicator.Position = option.Value and 
-            (Menu.Position + V2New(Menu.Size.X - 35, 40 + (index * 30) + 2)) or 
-            (Menu.Position + V2New(Menu.Size.X - 50, 40 + (index * 30) + 2))
+            (Menu.Position + V2New(Menu.Size.X - 35, 40 + (index * 30) + 7)) or 
+            (Menu.Position + V2New(Menu.Size.X - 50, 40 + (index * 30) + 7))
     end
 end
 
@@ -265,77 +244,85 @@ local function IsMouseInBounds(position, size)
 end
 
 -- Input handlers
-UserInputService.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local mousePos = GetMouseLocation()
-        
-        -- Check if clicking toggle button
-        if IsMouseInBounds(Menu.ToggleButton.Position, Menu.ToggleButton.Size) then
-            Menu.ToggleButton.Dragging = true
-            Menu.ToggleButton.DragOffset = mousePos - Menu.ToggleButton.Position
-            return
-        end
-        
-        -- Check if clicking menu header for dragging
-        if Menu.Open and IsMouseInBounds(Menu.Position, V2New(Menu.Size.X, 30)) then
-            Menu.Dragging = true
-            Menu.DragOffset = mousePos - Menu.Position
-            return
-        end
-        
-        -- Check if clicking close button
-        if Menu.Open and IsMouseInBounds(Menu.Position + V2New(Menu.Size.X - 25, 5), V2New(20, 20)) then
-            ToggleMenu()
-            return
-        end
-        
-        -- Check if clicking options
-        if Menu.Open then
-            for key, option in pairs(MenuElements.Options) do
-                if IsMouseInBounds(option.Box.Position, option.Box.Size) then
-                    ToggleOption(key)
-                    return
+local function SetupInputHandlers()
+    UserInputService.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local mousePos = GetMouseLocation()
+            
+            -- Check if clicking toggle button
+            if IsMouseInBounds(Menu.ToggleButton.Position, Menu.ToggleButton.Size) then
+                Menu.ToggleButton.Dragging = true
+                Menu.ToggleButton.DragOffset = mousePos - Menu.ToggleButton.Position
+                return
+            end
+            
+            -- Check if clicking menu header for dragging
+            if Menu.Open and IsMouseInBounds(Menu.Position, V2New(Menu.Size.X, 30)) then
+                Menu.Dragging = true
+                Menu.DragOffset = mousePos - Menu.Position
+                return
+            end
+            
+            -- Check if clicking close button
+            if Menu.Open and IsMouseInBounds(Menu.Position + V2New(Menu.Size.X - 25, 5), V2New(20, 20)) then
+                ToggleMenu()
+                return
+            end
+            
+            -- Check if clicking options
+            if Menu.Open then
+                for key, option in pairs(MenuElements.Options) do
+                    if IsMouseInBounds(option.Box.Position, option.Box.Size) then
+                        ToggleOption(key)
+                        return
+                    end
                 end
             end
         end
-    end
-end)
+    end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        local mousePos = GetMouseLocation()
-        
-        -- Handle toggle button dragging
-        if Menu.ToggleButton.Dragging then
-            Menu.ToggleButton.Position = mousePos - Menu.ToggleButton.DragOffset
-            UpdateToggleButtonPosition()
-        end
-        
-        -- Handle menu dragging
-        if Menu.Dragging then
-            Menu.Position = mousePos - Menu.DragOffset
-            UpdateMenuPosition()
-        end
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        -- Check if this was a click (not drag) on toggle button
-        if Menu.ToggleButton.Dragging then
-            local dragDistance = (GetMouseLocation() - Menu.ToggleButton.DragOffset - Menu.ToggleButton.Position).Magnitude
+    UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mousePos = GetMouseLocation()
             
-            -- If minimal movement, treat as click
-            if dragDistance < 5 then
-                ToggleMenu()
+            -- Handle toggle button dragging
+            if Menu.ToggleButton.Dragging then
+                Menu.ToggleButton.Position = mousePos - Menu.ToggleButton.DragOffset
+                UpdateToggleButtonPosition()
+                
+                -- Move menu with toggle button if it's open
+                if Menu.Open then
+                    Menu.Position = Menu.ToggleButton.Position + V2New(50, 0)
+                    UpdateMenuPosition()
+                end
             end
             
-            Menu.ToggleButton.Dragging = false
+            -- Handle menu dragging
+            if Menu.Dragging then
+                Menu.Position = mousePos - Menu.DragOffset
+                UpdateMenuPosition()
+            end
         end
-        
-        Menu.Dragging = false
-    end
-end)
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            -- Check if this was a click (not drag) on toggle button
+            if Menu.ToggleButton.Dragging then
+                local dragDistance = (GetMouseLocation() - Menu.ToggleButton.DragOffset - Menu.ToggleButton.Position).Magnitude
+                
+                -- If minimal movement, treat as click
+                if dragDistance < 5 then
+                    ToggleMenu()
+                end
+                
+                Menu.ToggleButton.Dragging = false
+            end
+            
+            Menu.Dragging = false
+        end
+    end)
+end
 
 -- ESP Functions
 local ESPObjects = {}
@@ -355,16 +342,20 @@ local function CreateESP(player)
     -- Configure ESP objects
     esp.Box.Thickness = 2
     esp.Box.Filled = false
+    esp.Box.Visible = false
     
     esp.Tracer.Thickness = 1
+    esp.Tracer.Visible = false
     
     esp.Name.Size = ESPConfig.TextSize
     esp.Name.Center = true
     esp.Name.Outline = true
+    esp.Name.Visible = false
     
     esp.Distance.Size = ESPConfig.TextSize
     esp.Distance.Center = true
     esp.Distance.Outline = true
+    esp.Distance.Visible = false
 end
 
 local function RemoveESP(player)
@@ -480,7 +471,7 @@ local function UpdateESP()
             end
             
             if ESPConfig.ShowDistance then
-                esp.Distance.Text = string.format("[%d studs]", distance)
+                esp.Distance.Text = string.format("[%d studs]", math.floor(distance))
                 esp.Distance.Position = V2New(headPos.X, headPos.Y - 15)
                 esp.Distance.Color = color
                 esp.Distance.Visible = true
@@ -497,44 +488,41 @@ local function UpdateESP()
 end
 
 -- Player handlers
-Players.PlayerAdded:Connect(function(player)
-    CreateESP(player)
-end)
+local function SetupPlayerHandlers()
+    Players.PlayerAdded:Connect(function(player)
+        CreateESP(player)
+    end)
 
-Players.PlayerRemoving:Connect(function(player)
-    RemoveESP(player)
-end)
+    Players.PlayerRemoving:Connect(function(player)
+        RemoveESP(player)
+    end)
 
--- Initialize ESP for existing players
-for _, player in ipairs(Players:GetPlayers()) do
-    CreateESP(player)
+    -- Initialize ESP for existing players
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            CreateESP(player)
+        end
+    end
 end
 
--- Initialize menu
-InitializeMenu()
-
--- Main loop
-RunService.RenderStepped:Connect(function()
-    UpdateESP()
-end)
-
--- Cleanup on script termination
-game:GetService("UserInputService").WindowFocusReleased:Connect(function()
-    for player, esp in pairs(ESPObjects) do
-        RemoveESP(player)
-    end
+-- Main initialization
+local function Main()
+    -- Initialize the menu
+    InitializeMenu()
     
-    for _, element in pairs(MenuElements) do
-        if element.Visible ~= nil then
-            element:Remove()
-        end
-    end
+    -- Setup input handlers
+    SetupInputHandlers()
     
-    for _, element in pairs(ToggleButtonElements) do
-        if element.Visible ~= nil then
-            element:Remove()
-        end
-    end
-end)
+    -- Setup player handlers
+    SetupPlayerHandlers()
+    
+    -- Main loop
+    RunService.RenderStepped:Connect(function()
+        UpdateESP()
+    end)
+    
+    print("Modern ESP loaded! Use the toggle button to open/close the menu.")
+end
 
-print("Modern ESP loaded! Use the toggle button to open/close the menu.")
+-- Start the script
+Main()
