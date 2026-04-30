@@ -1,4 +1,4 @@
-local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/UI-Interface/CustomFIeld/main/RayField.lua'))()
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/BlitzBiteYT/Scripts/refs/heads/main/RayField/RayField.lua'))()
 local Window = Rayfield:CreateWindow({
    Name = "Arrayfield Example Window",
    LoadingTitle = "Arrayfield Interface Suite",
