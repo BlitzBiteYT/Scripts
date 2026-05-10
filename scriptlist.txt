@@ -525,3 +525,13 @@ elfScientist
 elfUP
 mm2
 untitleddrill
+1JumpPogoClimb
+1PunchPerClick
+1SpeedKeyboardEscape
+1SpeedWingsEscape
+BasketballTraining
+BeaThief
+BuildBridgetoBrainrots
+DontStealBrainrotFromBase
+FlyUp
+MonkeyBombTag
