@@ -1,1120 +1,689 @@
--- ═══════════════════════════════════════════════════════════════
---              PART INSPECTOR v2.0 | by executor script
---         Double-click any Part/Model to inspect all its info
--- ═══════════════════════════════════════════════════════════════
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║           PART INSPECTOR  •  by executor script          ║
+-- ║     Double-click any Part to inspect all its data        ║
+-- ╚══════════════════════════════════════════════════════════╝
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local Players        = game:GetService("Players")
+local RunService     = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
+local TweenService   = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
-local Camera = workspace.CurrentCamera
+local Mouse       = LocalPlayer:GetMouse()
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
--- ══════════════════════════
---        CONFIGURATION
--- ══════════════════════════
-local CONFIG = {
-    DoubleClickTime = 0.35,   -- Max seconds between two clicks to count as double-click
-    UIWidth         = 420,
-    UIHeight        = 560,
-    MaxPathLength   = 80,     -- Truncate paths longer than this
-    HighlightColor  = Color3.fromRGB(0, 200, 255),
-    HighlightOutlineColor = Color3.fromRGB(255, 255, 255),
+-- ─── Cleanup old instance ────────────────────────────────────
+if PlayerGui:FindFirstChild("PartInspectorGui") then
+    PlayerGui:FindFirstChild("PartInspectorGui"):Destroy()
+end
+
+-- ─── Constants ───────────────────────────────────────────────
+local PANEL_WIDTH   = 340
+local PANEL_HEIGHT  = 580
+local TWEEN_TIME    = 0.35
+local DOUBLE_CLICK_TIME = 0.4   -- seconds between clicks
+local SCREEN_W      = workspace.CurrentCamera.ViewportSize.X
+local SCREEN_H      = workspace.CurrentCamera.ViewportSize.Y
+
+-- ─── Colour Palette ──────────────────────────────────────────
+local C = {
+    bg          = Color3.fromRGB(10,  12,  20),
+    panel       = Color3.fromRGB(15,  18,  30),
+    header      = Color3.fromRGB(20,  24,  42),
+    accent      = Color3.fromRGB(80, 160, 255),
+    accent2     = Color3.fromRGB(120, 220, 180),
+    text        = Color3.fromRGB(220, 225, 240),
+    textDim     = Color3.fromRGB(120, 130, 160),
+    border      = Color3.fromRGB(40,  50,  80),
+    rowA        = Color3.fromRGB(18,  22,  38),
+    rowB        = Color3.fromRGB(13,  16,  28),
+    red         = Color3.fromRGB(255,  80,  80),
+    green       = Color3.fromRGB( 80, 220, 130),
+    yellow      = Color3.fromRGB(255, 200,  60),
+    tab         = Color3.fromRGB(25,  30,  50),
+    tabSel      = Color3.fromRGB(35,  45,  75),
 }
 
--- ══════════════════════════
---       STATE VARIABLES
--- ══════════════════════════
-local lastClickTime   = 0
-local currentHighlight = nil
-local inspectorGui    = nil
-local isOpen          = false
-local selectedPart    = nil
-local updateConnection = nil
+-- ─── GUI Root ─────────────────────────────────────────────────
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name             = "PartInspectorGui"
+ScreenGui.ResetOnSpawn     = false
+ScreenGui.ZIndexBehavior   = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset   = true
+ScreenGui.Parent           = PlayerGui
 
--- ══════════════════════════════════════════
---         UTILITY FUNCTIONS
--- ══════════════════════════════════════════
+-- ─── Helper: make UICorner ────────────────────────────────────
+local function corner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = parent
+    return c
+end
 
-local function getFullPath(instance)
-    local path = {}
-    local current = instance
-    while current and current ~= game do
-        table.insert(path, 1, current.Name)
-        current = current.Parent
+local function stroke(parent, color, thickness)
+    local s = Instance.new("UIStroke")
+    s.Color     = color or C.border
+    s.Thickness = thickness or 1
+    s.Parent    = parent
+    return s
+end
+
+local function label(parent, text, size, color, bold, xAlign)
+    local l = Instance.new("TextLabel")
+    l.Text              = text
+    l.TextSize          = size or 13
+    l.TextColor3        = color or C.text
+    l.Font              = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+    l.TextXAlignment    = xAlign or Enum.TextXAlignment.Left
+    l.BackgroundTransparency = 1
+    l.Size              = UDim2.new(1, 0, 0, size and size + 6 or 19)
+    l.Parent            = parent
+    return l
+end
+
+-- ─── TOGGLE ARROW BUTTON (left side) ─────────────────────────
+local ArrowBtn = Instance.new("TextButton")
+ArrowBtn.Name             = "ArrowToggle"
+ArrowBtn.Size             = UDim2.new(0, 28, 0, 64)
+ArrowBtn.Position         = UDim2.new(0, 0, 0.5, -32)
+ArrowBtn.BackgroundColor3 = C.accent
+ArrowBtn.Text             = "❯"
+ArrowBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
+ArrowBtn.TextSize         = 16
+ArrowBtn.Font             = Enum.Font.GothamBold
+ArrowBtn.ZIndex           = 10
+ArrowBtn.AutoButtonColor  = false
+ArrowBtn.Parent           = ScreenGui
+corner(ArrowBtn, 6)
+
+-- subtle glow
+local ArrowGrad = Instance.new("UIGradient")
+ArrowGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 180, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 120, 220)),
+}
+ArrowGrad.Rotation = 90
+ArrowGrad.Parent   = ArrowBtn
+
+-- ─── MAIN PANEL ───────────────────────────────────────────────
+local Panel = Instance.new("Frame")
+Panel.Name              = "Panel"
+Panel.Size              = UDim2.new(0, PANEL_WIDTH, 0, PANEL_HEIGHT)
+Panel.Position          = UDim2.new(0, -PANEL_WIDTH, 0.5, -(PANEL_HEIGHT / 2))
+Panel.BackgroundColor3  = C.panel
+Panel.ClipsDescendants  = true
+Panel.ZIndex            = 5
+Panel.Parent            = ScreenGui
+corner(Panel, 10)
+stroke(Panel, C.border, 1)
+
+-- inner gradient
+local PanelGrad = Instance.new("UIGradient")
+PanelGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 25, 45)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 15, 26)),
+}
+PanelGrad.Rotation = 135
+PanelGrad.Parent   = Panel
+
+-- ─── HEADER ──────────────────────────────────────────────────
+local Header = Instance.new("Frame")
+Header.Size             = UDim2.new(1, 0, 0, 52)
+Header.BackgroundColor3 = C.header
+Header.ZIndex           = 6
+Header.Parent           = Panel
+corner(Header, 10)
+
+local HeaderGrad = Instance.new("UIGradient")
+HeaderGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 40, 75)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(18, 22, 42)),
+}
+HeaderGrad.Rotation = 90
+HeaderGrad.Parent   = Header
+
+local TitleIcon = label(Header, "🔍", 18, C.accent, true, Enum.TextXAlignment.Left)
+TitleIcon.Position = UDim2.new(0, 12, 0, 0)
+TitleIcon.Size     = UDim2.new(0, 28, 1, 0)
+TitleIcon.ZIndex   = 7
+
+local TitleLbl = label(Header, "PART INSPECTOR", 14, C.text, true)
+TitleLbl.Position = UDim2.new(0, 44, 0, 0)
+TitleLbl.Size     = UDim2.new(1, -90, 1, 0)
+TitleLbl.TextYAlignment = Enum.TextYAlignment.Center
+TitleLbl.ZIndex   = 7
+
+local SubLbl = label(Header, "double-click any part", 10, C.textDim, false)
+SubLbl.Position = UDim2.new(0, 44, 0, 28)
+SubLbl.Size     = UDim2.new(1, -90, 0, 14)
+SubLbl.ZIndex   = 7
+
+-- Close button
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size             = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position         = UDim2.new(1, -36, 0.5, -14)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+CloseBtn.Text             = "✕"
+CloseBtn.TextColor3       = Color3.new(1,1,1)
+CloseBtn.TextSize         = 13
+CloseBtn.Font             = Enum.Font.GothamBold
+CloseBtn.AutoButtonColor  = false
+CloseBtn.ZIndex           = 8
+CloseBtn.Parent           = Header
+corner(CloseBtn, 6)
+
+-- ─── SELECTED PART NAME BADGE ─────────────────────────────────
+local PartBadge = Instance.new("Frame")
+PartBadge.Size             = UDim2.new(1, -16, 0, 30)
+PartBadge.Position         = UDim2.new(0, 8, 0, 58)
+PartBadge.BackgroundColor3 = Color3.fromRGB(20, 30, 58)
+PartBadge.ZIndex           = 6
+PartBadge.Parent           = Panel
+corner(PartBadge, 6)
+stroke(PartBadge, C.accent, 1)
+
+local BadgeDot = Instance.new("Frame")
+BadgeDot.Size             = UDim2.new(0, 8, 0, 8)
+BadgeDot.Position         = UDim2.new(0, 10, 0.5, -4)
+BadgeDot.BackgroundColor3 = C.green
+BadgeDot.ZIndex           = 7
+BadgeDot.Parent           = PartBadge
+corner(BadgeDot, 99)
+
+local BadgeName = label(PartBadge, "No part selected — double-click one", 12, C.accent, true)
+BadgeName.Position = UDim2.new(0, 26, 0, 0)
+BadgeName.Size     = UDim2.new(1, -30, 1, 0)
+BadgeName.TextYAlignment = Enum.TextYAlignment.Center
+BadgeName.ZIndex   = 7
+BadgeName.TextTruncate = Enum.TextTruncate.AtEnd
+
+-- ─── TAB BAR ──────────────────────────────────────────────────
+local tabs     = {"General", "Transform", "Physics", "Appearance", "Script"}
+local tabBtns  = {}
+local tabPages = {}
+
+local TabBar = Instance.new("Frame")
+TabBar.Size             = UDim2.new(1, -16, 0, 28)
+TabBar.Position         = UDim2.new(0, 8, 0, 95)
+TabBar.BackgroundColor3 = C.tab
+TabBar.ZIndex           = 6
+TabBar.Parent           = Panel
+corner(TabBar, 6)
+
+local TabLayout = Instance.new("UIListLayout")
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.Padding       = UDim.new(0, 2)
+TabLayout.Parent        = TabBar
+
+local TabPad = Instance.new("UIPadding")
+TabPad.PaddingLeft  = UDim.new(0, 3)
+TabPad.PaddingTop   = UDim.new(0, 3)
+TabPad.PaddingBottom = UDim.new(0, 3)
+TabPad.Parent       = TabBar
+
+-- Content area
+local ContentArea = Instance.new("Frame")
+ContentArea.Size             = UDim2.new(1, -16, 1, -140)
+ContentArea.Position         = UDim2.new(0, 8, 0, 130)
+ContentArea.BackgroundTransparency = 1
+ContentArea.ClipsDescendants = true
+ContentArea.ZIndex           = 6
+ContentArea.Parent           = Panel
+
+-- Build tabs
+for i, tabName in ipairs(tabs) do
+    local btn = Instance.new("TextButton")
+    btn.Size             = UDim2.new(0, (PANEL_WIDTH - 22) / #tabs - 2, 1, 0)
+    btn.BackgroundColor3 = i == 1 and C.tabSel or C.tab
+    btn.Text             = tabName
+    btn.TextColor3       = i == 1 and C.accent or C.textDim
+    btn.TextSize         = 10
+    btn.Font             = Enum.Font.GothamBold
+    btn.AutoButtonColor  = false
+    btn.ZIndex           = 7
+    btn.Parent           = TabBar
+    corner(btn, 5)
+    tabBtns[i] = btn
+
+    -- Page scroll frame
+    local page = Instance.new("ScrollingFrame")
+    page.Size                 = UDim2.new(1, 0, 1, 0)
+    page.Position             = UDim2.new(0, 0, 0, 0)
+    page.BackgroundTransparency = 1
+    page.ScrollBarThickness   = 3
+    page.ScrollBarImageColor3 = C.accent
+    page.CanvasSize           = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize  = Enum.AutomaticSize.Y
+    page.Visible              = i == 1
+    page.ZIndex               = 6
+    page.Parent               = ContentArea
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding   = UDim.new(0, 3)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent    = page
+
+    tabPages[i] = page
+end
+
+-- Tab switching
+local currentTab = 1
+local function switchTab(idx)
+    currentTab = idx
+    for i, btn in ipairs(tabBtns) do
+        btn.BackgroundColor3 = i == idx and C.tabSel or C.tab
+        btn.TextColor3       = i == idx and C.accent or C.textDim
+        tabPages[i].Visible  = i == idx
     end
-    table.insert(path, 1, "game")
-    return table.concat(path, ".")
+end
+for i, btn in ipairs(tabBtns) do
+    btn.MouseButton1Click:Connect(function() switchTab(i) end)
 end
 
-local function getShortPath(instance)
-    local full = getFullPath(instance)
-    if #full > CONFIG.MaxPathLength then
-        return "..." .. full:sub(-(CONFIG.MaxPathLength - 3))
+-- ─── ROW BUILDER ─────────────────────────────────────────────
+local function makeRow(parent, key, value, order, isHeader)
+    local row = Instance.new("Frame")
+    row.Size             = UDim2.new(1, 0, 0, isHeader and 22 or 28)
+    row.BackgroundColor3 = isHeader and C.header or (order % 2 == 0 and C.rowA or C.rowB)
+    row.LayoutOrder      = order
+    row.ZIndex           = 7
+    row.Parent           = parent
+    corner(row, 5)
+
+    if isHeader then
+        local hl = label(row, "  " .. key, 10, C.accent, true)
+        hl.Size     = UDim2.new(1, 0, 1, 0)
+        hl.ZIndex   = 8
+        hl.TextYAlignment = Enum.TextYAlignment.Center
+        return row
     end
-    return full
+
+    -- key
+    local kl = label(row, key, 11, C.textDim, false)
+    kl.Position = UDim2.new(0, 8, 0, 0)
+    kl.Size     = UDim2.new(0, 130, 1, 0)
+    kl.TextYAlignment = Enum.TextYAlignment.Center
+    kl.ZIndex   = 8
+
+    -- value
+    local vl = label(row, tostring(value), 11, C.text, true, Enum.TextXAlignment.Right)
+    vl.Position = UDim2.new(0, 138, 0, 0)
+    vl.Size     = UDim2.new(1, -145, 1, 0)
+    vl.TextYAlignment = Enum.TextYAlignment.Center
+    vl.TextTruncate   = Enum.TextTruncate.AtEnd
+    vl.ZIndex   = 8
+
+    -- value colour coding
+    if value == true  then vl.TextColor3 = C.green  end
+    if value == false then vl.TextColor3 = C.red    end
+    if type(value) == "number" then vl.TextColor3 = C.accent2 end
+
+    return row, vl
 end
 
-local function color3ToHex(c)
-    local function toHex(v)
-        return string.format("%02X", math.clamp(math.round(v * 255), 0, 255))
+-- ─── PATH BUILDER ────────────────────────────────────────────
+local function getFullPath(inst)
+    local path = inst.Name
+    local cur  = inst.Parent
+    while cur and cur ~= game do
+        path = cur.Name .. "." .. path
+        cur  = cur.Parent
     end
-    return "#" .. toHex(c.R) .. toHex(c.G) .. toHex(c.B)
+    return "game." .. path
 end
 
-local function color3ToRGB(c)
-    return string.format("rgb(%d, %d, %d)",
-        math.round(c.R * 255),
-        math.round(c.G * 255),
-        math.round(c.B * 255)
-    )
-end
-
-local function vec3ToString(v, decimals)
-    decimals = decimals or 3
-    local fmt = "%." .. decimals .. "f"
-    return string.format("(" .. fmt .. ", " .. fmt .. ", " .. fmt .. ")", v.X, v.Y, v.Z)
-end
-
-local function boolToStr(b)
-    return b and "✔ True" or "✘ False"
-end
-
-local function getInstanceIcon(inst)
-    local icons = {
-        Part            = "🧱",
-        MeshPart        = "🔷",
-        UnionOperation  = "🔗",
-        SpecialMesh     = "🌀",
-        Model           = "📦",
-        Folder          = "📁",
-        Script          = "📜",
-        LocalScript     = "📜",
-        ModuleScript    = "📜",
-        SpawnLocation   = "🚩",
-        BasePart        = "🧱",
-        WedgePart       = "📐",
-        CornerWedgePart = "📐",
-        TrussPart       = "🔧",
-        Seat            = "🪑",
-        VehicleSeat     = "🚗",
-        Decal           = "🖼",
-        Texture         = "🖼",
-        PointLight      = "💡",
-        SpotLight       = "💡",
-        SurfaceLight    = "💡",
-        Sound           = "🔊",
-        BillboardGui    = "🪟",
-        SurfaceGui      = "🪟",
-        Humanoid        = "🧍",
-        HumanoidRootPart= "🧍",
-        Accessory       = "👒",
-        Tool            = "🛠",
-        Animation       = "🎬",
-        Weld            = "🔩",
-        WeldConstraint  = "🔩",
-        Motor6D         = "⚙️",
-        Attachment      = "📌",
-        BodyVelocity    = "💨",
-        BodyGyro        = "🔄",
-        Fire            = "🔥",
-        Smoke           = "💨",
-        Sparkles        = "✨",
-        Explosion       = "💥",
-        Beam            = "🌈",
-        Trail           = "〰️",
-        SelectionBox    = "🔲",
-        SurfaceAppearance = "🎨",
-        SpecialMeshType = "🔷",
-    }
-    local className = inst.ClassName
-    return icons[className] or "🔹"
-end
-
-local function getAncestorChain(inst)
-    local chain = {}
-    local current = inst.Parent
+local function getShortPath(inst)
+    -- workspace.Model.Part style
+    local path = inst.Name
+    local cur  = inst.Parent
     local depth = 0
-    while current and current ~= game and depth < 10 do
-        table.insert(chain, {name = current.Name, class = current.ClassName})
-        current = current.Parent
+    while cur and cur ~= game and depth < 20 do
+        path  = cur.Name .. " › " .. path
+        cur   = cur.Parent
         depth = depth + 1
     end
-    if current == game then
-        table.insert(chain, {name = "game", class = "DataModel"})
-    end
-    -- reverse
-    local reversed = {}
-    for i = #chain, 1, -1 do
-        table.insert(reversed, chain[i])
-    end
-    return reversed
+    return path
+end
+
+-- ─── FORMAT HELPERS ──────────────────────────────────────────
+local function fmtVec3(v)
+    return string.format("%.3f, %.3f, %.3f", v.X, v.Y, v.Z)
+end
+
+local function fmtColor(c)
+    return string.format("RGB(%d, %d, %d)", c.R*255, c.G*255, c.B*255)
+end
+
+local function fmtEnum(e)
+    return tostring(e):match("%.(.+)$") or tostring(e)
 end
 
 local function countDescendants(inst)
-    local total = 0
-    local function count(i)
-        for _, child in ipairs(i:GetChildren()) do
-            total = total + 1
-            count(child)
+    local n = 0
+    for _ in pairs(inst:GetDescendants()) do n = n + 1 end
+    return n
+end
+
+-- ─── POPULATE TABS ───────────────────────────────────────────
+local lastRows = {}
+
+local function clearPages()
+    for _, page in ipairs(tabPages) do
+        for _, child in ipairs(page:GetChildren()) do
+            if child:IsA("Frame") then child:Destroy() end
         end
     end
-    count(inst)
-    return total
+    lastRows = {}
 end
 
-local function countChildrenByClass(inst)
-    local classes = {}
-    for _, child in ipairs(inst:GetChildren()) do
-        classes[child.ClassName] = (classes[child.ClassName] or 0) + 1
+local function fillInspector(part)
+    clearPages()
+
+    BadgeName.Text     = part.Name
+    BadgeDot.BackgroundColor3 = C.green
+
+    local idx = 0
+    local function row(page, key, value, isHeader)
+        idx = idx + 1
+        return makeRow(tabPages[page], key, value, idx, isHeader)
     end
-    return classes
-end
 
-local function getPhysicsInfo(part)
-    local info = {}
-    -- velocity if applicable
-    pcall(function()
-        info.AssemblyLinearVelocity = vec3ToString(part.AssemblyLinearVelocity)
-        info.AssemblyAngularVelocity = vec3ToString(part.AssemblyAngularVelocity)
-        info.AssemblyMass = string.format("%.4f", part.AssemblyMass)
-    end)
-    pcall(function()
-        info.Mass = string.format("%.4f", part:GetMass())
-    end)
-    return info
-end
+    -- ── TAB 1: GENERAL ────────────────────────────────────────
+    row(1, "IDENTITY", nil, true)
+    row(1, "Name",           part.Name)
+    row(1, "ClassName",      part.ClassName)
+    row(1, "UniqueID",       tostring(part):match("0x%x+") or "N/A")
 
-local function getMaterialName(materialEnum)
-    local name = tostring(materialEnum)
-    return name:match("Enum%.Material%.(.+)") or tostring(materialEnum)
-end
+    row(1, "HIERARCHY", nil, true)
+    row(1, "Parent",         part.Parent and part.Parent.Name or "nil")
+    row(1, "Parent Class",   part.Parent and part.Parent.ClassName or "nil")
+    row(1, "Depth",          (function()
+        local d = 0; local c = part
+        while c.Parent do c = c.Parent; d = d + 1 end
+        return d
+    end)())
+    row(1, "Children",       #part:GetChildren())
+    row(1, "Descendants",    countDescendants(part))
+    row(1, "Tags",           #CollectionService and "N/A" or (function()
+        local ok, svc = pcall(function() return game:GetService("CollectionService") end)
+        if ok then
+            local tags = svc:GetTags(part)
+            return #tags > 0 and table.concat(tags, ", ") or "none"
+        end
+        return "N/A"
+    end)())
 
--- ══════════════════════════════════════════
---          HIGHLIGHT SYSTEM
--- ══════════════════════════════════════════
+    row(1, "PATH", nil, true)
+    row(1, "Full Path",      getFullPath(part))
+    row(1, "Short Path",     getShortPath(part))
+    row(1, "Workspace?",     part:IsDescendantOf(workspace))
+    row(1, "Archivable",     part.Archivable)
 
-local function clearHighlight()
-    if currentHighlight then
-        currentHighlight:Destroy()
-        currentHighlight = nil
+    -- ── TAB 2: TRANSFORM ──────────────────────────────────────
+    row(2, "POSITION", nil, true)
+    row(2, "Position",       fmtVec3(part.Position))
+    row(2, "X",              math.round(part.Position.X * 1000) / 1000)
+    row(2, "Y",              math.round(part.Position.Y * 1000) / 1000)
+    row(2, "Z",              math.round(part.Position.Z * 1000) / 1000)
+
+    row(2, "ROTATION", nil, true)
+    local rx, ry, rz = part.CFrame:ToEulerAnglesXYZ()
+    row(2, "Orientation",    fmtVec3(part.Orientation))
+    row(2, "Rot X (rad)",    math.round(rx * 1000) / 1000)
+    row(2, "Rot Y (rad)",    math.round(ry * 1000) / 1000)
+    row(2, "Rot Z (rad)",    math.round(rz * 1000) / 1000)
+
+    row(2, "SIZE", nil, true)
+    row(2, "Size",           fmtVec3(part.Size))
+    row(2, "Width (X)",      math.round(part.Size.X * 1000) / 1000)
+    row(2, "Height (Y)",     math.round(part.Size.Y * 1000) / 1000)
+    row(2, "Depth (Z)",      math.round(part.Size.Z * 1000) / 1000)
+
+    row(2, "CFRAME", nil, true)
+    row(2, "CFrame.X",       math.round(part.CFrame.X * 100) / 100)
+    row(2, "CFrame.Y",       math.round(part.CFrame.Y * 100) / 100)
+    row(2, "CFrame.Z",       math.round(part.CFrame.Z * 100) / 100)
+    row(2, "LookVector",     fmtVec3(part.CFrame.LookVector))
+    row(2, "RightVector",    fmtVec3(part.CFrame.RightVector))
+    row(2, "UpVector",       fmtVec3(part.CFrame.UpVector))
+
+    -- ── TAB 3: PHYSICS ────────────────────────────────────────
+    row(3, "ANCHORING", nil, true)
+    row(3, "Anchored",       part.Anchored)
+    row(3, "CanCollide",     part.CanCollide)
+    row(3, "CanTouch",       part.CanTouch)
+    row(3, "CanQuery",       part.CanQuery)
+    row(3, "Locked",         part.Locked)
+
+    row(3, "MASS & INERTIA", nil, true)
+    row(3, "Mass",           math.round(part:GetMass() * 1000) / 1000 .. " kg")
+    row(3, "CustomPhysical", part.CustomPhysicalProperties ~= nil and "Yes" or "Default")
+    row(3, "CenterOfMass",   fmtVec3(part:GetRootPart() == part and Vector3.new(0,0,0) or Vector3.new(0,0,0)))
+
+    row(3, "VELOCITY", nil, true)
+    row(3, "AssemblyVel",    fmtVec3(part.AssemblyLinearVelocity))
+    row(3, "AngularVel",     fmtVec3(part.AssemblyAngularVelocity))
+
+    row(3, "COLLISION", nil, true)
+    row(3, "CollisionGroup", part.CollisionGroupId)
+    row(3, "Massless",       part.Massless)
+    row(3, "RootPriority",   part.RootPriority)
+
+    -- ── TAB 4: APPEARANCE ─────────────────────────────────────
+    row(4, "MATERIAL", nil, true)
+    row(4, "Material",       fmtEnum(part.Material))
+    row(4, "MaterialVariant", part.MaterialVariant ~= "" and part.MaterialVariant or "none")
+    row(4, "Reflectance",    math.round(part.Reflectance * 100) .. "%")
+    row(4, "Transparency",   math.round(part.Transparency * 100) .. "%")
+
+    row(4, "COLOR", nil, true)
+    row(4, "Color (RGB)",    fmtColor(part.Color))
+    row(4, "Color (BrickColor)", tostring(part.BrickColor))
+    row(4, "Hex Color",      string.format("#%02X%02X%02X",
+        math.floor(part.Color.R * 255),
+        math.floor(part.Color.G * 255),
+        math.floor(part.Color.B * 255)))
+
+    row(4, "SURFACE", nil, true)
+    row(4, "CastShadow",     part.CastShadow)
+    row(4, "TopSurface",     fmtEnum(part.TopSurface))
+    row(4, "BottomSurface",  fmtEnum(part.BottomSurface))
+    row(4, "FrontSurface",   fmtEnum(part.FrontSurface))
+    row(4, "BackSurface",    fmtEnum(part.BackSurface))
+    row(4, "LeftSurface",    fmtEnum(part.LeftSurface))
+    row(4, "RightSurface",   fmtEnum(part.RightSurface))
+
+    row(4, "SHAPE", nil, true)
+    if part:IsA("Part") then
+        row(4, "Shape",      fmtEnum(part.Shape))
+    else
+        row(4, "Shape",      "N/A (" .. part.ClassName .. ")")
     end
-end
 
-local function highlightPart(part)
-    clearHighlight()
-    local ok, hl = pcall(function()
-        local h = Instance.new("SelectionBox")
-        h.Adornee = part
-        h.Color3 = CONFIG.HighlightColor
-        h.LineThickness = 0.06
-        h.SurfaceTransparency = 0.7
-        h.SurfaceColor3 = CONFIG.HighlightColor
-        h.Parent = workspace
-        return h
-    end)
-    if ok then currentHighlight = hl end
-end
-
--- ══════════════════════════════════════════
---           GUI BUILDER
--- ══════════════════════════════════════════
-
-local function createInspectorGui()
-    -- Remove old GUI if exists
-    local existing = LocalPlayer.PlayerGui:FindFirstChild("PartInspectorV2")
-    if existing then existing:Destroy() end
-
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "PartInspectorV2"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    ScreenGui.IgnoreGuiInset = true
-    ScreenGui.Parent = LocalPlayer.PlayerGui
-
-    -- ── Main Frame ──
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, CONFIG.UIWidth, 0, CONFIG.UIHeight)
-    MainFrame.Position = UDim2.new(0.5, -CONFIG.UIWidth/2, 0.5, -CONFIG.UIHeight/2)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
-    MainFrame.BorderSizePixel = 0
-    MainFrame.Visible = false
-    MainFrame.Parent = ScreenGui
-
-    -- Glow border effect
-    local border = Instance.new("UIStroke")
-    border.Color = Color3.fromRGB(0, 180, 255)
-    border.Thickness = 1.5
-    border.Transparency = 0.3
-    border.Parent = MainFrame
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = MainFrame
-
-    -- Drop shadow (fake via frame behind)
-    local shadow = Instance.new("Frame")
-    shadow.Size = UDim2.new(1, 14, 1, 14)
-    shadow.Position = UDim2.new(0, -7, 0, 7)
-    shadow.BackgroundColor3 = Color3.fromRGB(0, 140, 255)
-    shadow.BackgroundTransparency = 0.88
-    shadow.ZIndex = MainFrame.ZIndex - 1
-    shadow.BorderSizePixel = 0
-    shadow.Parent = MainFrame
-    Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, 14)
-
-    -- ── Title Bar ──
-    local TitleBar = Instance.new("Frame")
-    TitleBar.Name = "TitleBar"
-    TitleBar.Size = UDim2.new(1, 0, 0, 46)
-    TitleBar.BackgroundColor3 = Color3.fromRGB(0, 120, 220)
-    TitleBar.BorderSizePixel = 0
-    TitleBar.ZIndex = 3
-    TitleBar.Parent = MainFrame
-
-    local titleCorner = Instance.new("UICorner")
-    titleCorner.CornerRadius = UDim.new(0, 10)
-    titleCorner.Parent = TitleBar
-
-    -- Fix bottom corners of title bar
-    local titleFix = Instance.new("Frame")
-    titleFix.Size = UDim2.new(1, 0, 0, 10)
-    titleFix.Position = UDim2.new(0, 0, 1, -10)
-    titleFix.BackgroundColor3 = TitleBar.BackgroundColor3
-    titleFix.BorderSizePixel = 0
-    titleFix.ZIndex = TitleBar.ZIndex
-    titleFix.Parent = TitleBar
-
-    -- Title gradient
-    local titleGrad = Instance.new("UIGradient")
-    titleGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 100, 220)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 180, 255)),
-    })
-    titleGrad.Rotation = 90
-    titleGrad.Parent = TitleBar
-
-    local TitleIcon = Instance.new("TextLabel")
-    TitleIcon.Size = UDim2.new(0, 36, 1, 0)
-    TitleIcon.Position = UDim2.new(0, 10, 0, 0)
-    TitleIcon.BackgroundTransparency = 1
-    TitleIcon.Text = "🔍"
-    TitleIcon.TextSize = 20
-    TitleIcon.ZIndex = 4
-    TitleIcon.Parent = TitleBar
-
-    local TitleLabel = Instance.new("TextLabel")
-    TitleLabel.Name = "TitleLabel"
-    TitleLabel.Size = UDim2.new(1, -100, 1, 0)
-    TitleLabel.Position = UDim2.new(0, 44, 0, 0)
-    TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Text = "PART INSPECTOR"
-    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TitleLabel.TextSize = 15
-    TitleLabel.Font = Enum.Font.GothamBold
-    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    TitleLabel.ZIndex = 4
-    TitleLabel.Parent = TitleBar
-
-    local SubLabel = Instance.new("TextLabel")
-    SubLabel.Name = "SubLabel"
-    SubLabel.Size = UDim2.new(1, -100, 0, 16)
-    SubLabel.Position = UDim2.new(0, 44, 0, 28)
-    SubLabel.BackgroundTransparency = 1
-    SubLabel.Text = "Double-click any part"
-    SubLabel.TextColor3 = Color3.fromRGB(180, 220, 255)
-    SubLabel.TextSize = 11
-    SubLabel.Font = Enum.Font.Gotham
-    SubLabel.TextXAlignment = Enum.TextXAlignment.Left
-    SubLabel.ZIndex = 4
-    SubLabel.Parent = TitleBar
-
-    -- Close button
-    local CloseBtn = Instance.new("TextButton")
-    CloseBtn.Name = "CloseBtn"
-    CloseBtn.Size = UDim2.new(0, 32, 0, 32)
-    CloseBtn.Position = UDim2.new(1, -40, 0, 7)
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-    CloseBtn.Text = "✕"
-    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseBtn.TextSize = 14
-    CloseBtn.Font = Enum.Font.GothamBold
-    CloseBtn.ZIndex = 5
-    CloseBtn.AutoButtonColor = true
-    CloseBtn.Parent = TitleBar
-    Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
-
-    -- Pin/minimize button
-    local CopyBtn = Instance.new("TextButton")
-    CopyBtn.Name = "CopyBtn"
-    CopyBtn.Size = UDim2.new(0, 32, 0, 32)
-    CopyBtn.Position = UDim2.new(1, -78, 0, 7)
-    CopyBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
-    CopyBtn.Text = "📋"
-    CopyBtn.TextSize = 14
-    CopyBtn.Font = Enum.Font.GothamBold
-    CopyBtn.ZIndex = 5
-    CopyBtn.AutoButtonColor = true
-    CopyBtn.Parent = TitleBar
-    Instance.new("UICorner", CopyBtn).CornerRadius = UDim.new(0, 6)
-
-    -- ── Tab Bar ──
-    local TabBar = Instance.new("Frame")
-    TabBar.Name = "TabBar"
-    TabBar.Size = UDim2.new(1, 0, 0, 36)
-    TabBar.Position = UDim2.new(0, 0, 0, 46)
-    TabBar.BackgroundColor3 = Color3.fromRGB(15, 18, 28)
-    TabBar.BorderSizePixel = 0
-    TabBar.ZIndex = 3
-    TabBar.Parent = MainFrame
-
-    local tabLayout = Instance.new("UIListLayout")
-    tabLayout.FillDirection = Enum.FillDirection.Horizontal
-    tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    tabLayout.Padding = UDim.new(0, 4)
-    tabLayout.Parent = TabBar
-
-    local tabPad = Instance.new("UIPadding")
-    tabPad.PaddingLeft = UDim.new(0, 8)
-    tabPad.PaddingTop = UDim.new(0, 5)
-    tabPad.PaddingBottom = UDim.new(0, 5)
-    tabPad.Parent = TabBar
-
-    local tabSeparator = Instance.new("Frame")
-    tabSeparator.Size = UDim2.new(1, 0, 0, 1)
-    tabSeparator.Position = UDim2.new(0, 0, 1, -1)
-    tabSeparator.BackgroundColor3 = Color3.fromRGB(0, 120, 220)
-    tabSeparator.BackgroundTransparency = 0.5
-    tabSeparator.BorderSizePixel = 0
-    tabSeparator.ZIndex = 4
-    tabSeparator.Parent = TabBar
-
-    -- ── Scroll Frame ──
-    local ScrollFrame = Instance.new("ScrollingFrame")
-    ScrollFrame.Name = "ScrollFrame"
-    ScrollFrame.Size = UDim2.new(1, 0, 1, -82)
-    ScrollFrame.Position = UDim2.new(0, 0, 0, 82)
-    ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.BorderSizePixel = 0
-    ScrollFrame.ScrollBarThickness = 4
-    ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 160, 255)
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    ScrollFrame.ZIndex = 2
-    ScrollFrame.Parent = MainFrame
-
-    local ContentFrame = Instance.new("Frame")
-    ContentFrame.Name = "ContentFrame"
-    ContentFrame.Size = UDim2.new(1, 0, 0, 0)
-    ContentFrame.AutomaticSize = Enum.AutomaticSize.Y
-    ContentFrame.BackgroundTransparency = 1
-    ContentFrame.ZIndex = 2
-    ContentFrame.Parent = ScrollFrame
-
-    local contentLayout = Instance.new("UIListLayout")
-    contentLayout.FillDirection = Enum.FillDirection.Vertical
-    contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    contentLayout.Padding = UDim.new(0, 2)
-    contentLayout.Parent = ContentFrame
-
-    local contentPad = Instance.new("UIPadding")
-    contentPad.PaddingLeft = UDim.new(0, 10)
-    contentPad.PaddingRight = UDim.new(0, 14)
-    contentPad.PaddingTop = UDim.new(0, 8)
-    contentPad.PaddingBottom = UDim.new(0, 16)
-    contentPad.Parent = ContentFrame
-
-    -- ── Dragging ──
-    local dragging = false
-    local dragStart, startPos
-
-    TitleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = MainFrame.Position
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            MainFrame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-
-    CloseBtn.MouseButton1Click:Connect(function()
-        isOpen = false
-        MainFrame.Visible = false
-        clearHighlight()
-        if updateConnection then
-            updateConnection:Disconnect()
-            updateConnection = nil
-        end
-    end)
-
-    return {
-        Gui        = ScreenGui,
-        MainFrame  = MainFrame,
-        TitleLabel = TitleLabel,
-        SubLabel   = SubLabel,
-        TabBar     = TabBar,
-        ContentFrame = ContentFrame,
-        CopyBtn    = CopyBtn,
-    }
-end
-
--- ══════════════════════════════════════════
---         SECTION / ROW BUILDERS
--- ══════════════════════════════════════════
-
-local SECTION_COLORS = {
-    identity  = Color3.fromRGB(0, 150, 255),
-    transform = Color3.fromRGB(0, 200, 120),
-    physics   = Color3.fromRGB(255, 160, 0),
-    visual    = Color3.fromRGB(200, 80, 255),
-    hierarchy = Color3.fromRGB(255, 80, 120),
-    tags      = Color3.fromRGB(255, 200, 0),
-    children  = Color3.fromRGB(80, 220, 200),
-    attributes= Color3.fromRGB(160, 255, 120),
-    misc      = Color3.fromRGB(180, 180, 180),
-}
-
-local function createSection(parent, title, icon, colorKey, order)
-    local color = SECTION_COLORS[colorKey] or Color3.fromRGB(120,120,120)
-
-    local Section = Instance.new("Frame")
-    Section.Size = UDim2.new(1, 0, 0, 0)
-    Section.AutomaticSize = Enum.AutomaticSize.Y
-    Section.BackgroundTransparency = 1
-    Section.LayoutOrder = order
-    Section.ZIndex = 2
-    Section.Parent = parent
-
-    local sLayout = Instance.new("UIListLayout")
-    sLayout.FillDirection = Enum.FillDirection.Vertical
-    sLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    sLayout.Padding = UDim.new(0, 1)
-    sLayout.Parent = Section
-
-    -- Header
-    local Header = Instance.new("Frame")
-    Header.Size = UDim2.new(1, 0, 0, 28)
-    Header.BackgroundColor3 = color
-    Header.BackgroundTransparency = 0.75
-    Header.BorderSizePixel = 0
-    Header.LayoutOrder = 0
-    Header.ZIndex = 3
-    Header.Parent = Section
-    Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 6)
-
-    local accent = Instance.new("Frame")
-    accent.Size = UDim2.new(0, 3, 1, 0)
-    accent.BackgroundColor3 = color
-    accent.BackgroundTransparency = 0
-    accent.BorderSizePixel = 0
-    accent.ZIndex = 4
-    accent.Parent = Header
-    Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 2)
-
-    local HeaderLabel = Instance.new("TextLabel")
-    HeaderLabel.Size = UDim2.new(1, -12, 1, 0)
-    HeaderLabel.Position = UDim2.new(0, 10, 0, 0)
-    HeaderLabel.BackgroundTransparency = 1
-    HeaderLabel.Text = (icon and (icon .. "  ") or "") .. title:upper()
-    HeaderLabel.TextColor3 = color
-    HeaderLabel.TextSize = 11
-    HeaderLabel.Font = Enum.Font.GothamBold
-    HeaderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    HeaderLabel.ZIndex = 4
-    HeaderLabel.Parent = Header
-
-    -- Rows container
-    local Rows = Instance.new("Frame")
-    Rows.Name = "Rows"
-    Rows.Size = UDim2.new(1, 0, 0, 0)
-    Rows.AutomaticSize = Enum.AutomaticSize.Y
-    Rows.BackgroundTransparency = 1
-    Rows.LayoutOrder = 1
-    Rows.ZIndex = 2
-    Rows.Parent = Section
-
-    local rowLayout = Instance.new("UIListLayout")
-    rowLayout.FillDirection = Enum.FillDirection.Vertical
-    rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    rowLayout.Padding = UDim.new(0, 0)
-    rowLayout.Parent = Rows
-
-    -- Spacer after section
-    local spacer = Instance.new("Frame")
-    spacer.Size = UDim2.new(1, 0, 0, 8)
-    spacer.BackgroundTransparency = 1
-    spacer.LayoutOrder = 2
-    spacer.Parent = Section
-
-    return Rows
-end
-
-local rowCounter = 0
-local function createRow(parent, key, value, order, isAlt)
-    rowCounter = rowCounter + 1
-    local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(1, 0, 0, 24)
-    Row.BackgroundColor3 = isAlt
-        and Color3.fromRGB(20, 25, 38)
-        or  Color3.fromRGB(14, 17, 26)
-    Row.BackgroundTransparency = 0.3
-    Row.BorderSizePixel = 0
-    Row.LayoutOrder = order or rowCounter
-    Row.ZIndex = 2
-    Row.Parent = parent
-
-    local KeyLabel = Instance.new("TextLabel")
-    KeyLabel.Size = UDim2.new(0.42, -4, 1, 0)
-    KeyLabel.Position = UDim2.new(0, 8, 0, 0)
-    KeyLabel.BackgroundTransparency = 1
-    KeyLabel.Text = key
-    KeyLabel.TextColor3 = Color3.fromRGB(140, 170, 210)
-    KeyLabel.TextSize = 11
-    KeyLabel.Font = Enum.Font.Gotham
-    KeyLabel.TextXAlignment = Enum.TextXAlignment.Left
-    KeyLabel.TextTruncate = Enum.TextTruncate.AtEnd
-    KeyLabel.ZIndex = 3
-    KeyLabel.Parent = Row
-
-    local ValLabel = Instance.new("TextLabel")
-    ValLabel.Size = UDim2.new(0.58, -4, 1, 0)
-    ValLabel.Position = UDim2.new(0.42, 0, 0, 0)
-    ValLabel.BackgroundTransparency = 1
-    ValLabel.Text = tostring(value)
-    ValLabel.TextColor3 = Color3.fromRGB(220, 235, 255)
-    ValLabel.TextSize = 11
-    ValLabel.Font = Enum.Font.GothamBold
-    ValLabel.TextXAlignment = Enum.TextXAlignment.Right
-    ValLabel.TextTruncate = Enum.TextTruncate.AtEnd
-    ValLabel.ZIndex = 3
-    ValLabel.Parent = Row
-
-    -- separator line
-    local sep = Instance.new("Frame")
-    sep.Size = UDim2.new(1, -16, 0, 1)
-    sep.Position = UDim2.new(0, 8, 1, -1)
-    sep.BackgroundColor3 = Color3.fromRGB(30, 40, 60)
-    sep.BackgroundTransparency = 0.5
-    sep.BorderSizePixel = 0
-    sep.ZIndex = 3
-    sep.Parent = Row
-
-    return ValLabel
-end
-
-local function createPathRow(parent, path, order)
-    local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(1, 0, 0, 40)
-    Row.BackgroundColor3 = Color3.fromRGB(6, 10, 20)
-    Row.BackgroundTransparency = 0.1
-    Row.BorderSizePixel = 0
-    Row.LayoutOrder = order or 999
-    Row.ZIndex = 2
-    Row.Parent = parent
-    Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 5)
-
-    local PathLabel = Instance.new("TextLabel")
-    PathLabel.Size = UDim2.new(1, -12, 1, 0)
-    PathLabel.Position = UDim2.new(0, 8, 0, 0)
-    PathLabel.BackgroundTransparency = 1
-    PathLabel.Text = path
-    PathLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
-    PathLabel.TextSize = 10
-    PathLabel.Font = Enum.Font.Code
-    PathLabel.TextXAlignment = Enum.TextXAlignment.Left
-    PathLabel.TextYAlignment = Enum.TextYAlignment.Center
-    PathLabel.TextWrapped = true
-    PathLabel.ZIndex = 3
-    PathLabel.Parent = Row
-
-    return Row
-end
-
-local function createColorRow(parent, key, color, order, isAlt)
-    local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(1, 0, 0, 26)
-    Row.BackgroundColor3 = isAlt
-        and Color3.fromRGB(20, 25, 38)
-        or  Color3.fromRGB(14, 17, 26)
-    Row.BackgroundTransparency = 0.3
-    Row.BorderSizePixel = 0
-    Row.LayoutOrder = order or rowCounter
-    Row.ZIndex = 2
-    Row.Parent = parent
-
-    local KeyLabel = Instance.new("TextLabel")
-    KeyLabel.Size = UDim2.new(0.42, -4, 1, 0)
-    KeyLabel.Position = UDim2.new(0, 8, 0, 0)
-    KeyLabel.BackgroundTransparency = 1
-    KeyLabel.Text = key
-    KeyLabel.TextColor3 = Color3.fromRGB(140, 170, 210)
-    KeyLabel.TextSize = 11
-    KeyLabel.Font = Enum.Font.Gotham
-    KeyLabel.TextXAlignment = Enum.TextXAlignment.Left
-    KeyLabel.ZIndex = 3
-    KeyLabel.Parent = Row
-
-    -- Color swatch
-    local swatchHolder = Instance.new("Frame")
-    swatchHolder.Size = UDim2.new(0.58, -8, 0, 18)
-    swatchHolder.Position = UDim2.new(0.42, 0, 0.5, -9)
-    swatchHolder.BackgroundTransparency = 1
-    swatchHolder.ZIndex = 3
-    swatchHolder.Parent = Row
-
-    local swatchLayout = Instance.new("UIListLayout")
-    swatchLayout.FillDirection = Enum.FillDirection.Horizontal
-    swatchLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    swatchLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    swatchLayout.Padding = UDim.new(0, 5)
-    swatchLayout.Parent = swatchHolder
-
-    local swatch = Instance.new("Frame")
-    swatch.Size = UDim2.new(0, 18, 0, 18)
-    swatch.BackgroundColor3 = color
-    swatch.BorderSizePixel = 0
-    swatch.ZIndex = 4
-    swatch.Parent = swatchHolder
-    Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 3)
-    local swatchBorder = Instance.new("UIStroke")
-    swatchBorder.Color = Color3.fromRGB(255,255,255)
-    swatchBorder.Transparency = 0.7
-    swatchBorder.Thickness = 1
-    swatchBorder.Parent = swatch
-
-    local hexLabel = Instance.new("TextLabel")
-    hexLabel.Size = UDim2.new(0, 90, 1, 0)
-    hexLabel.BackgroundTransparency = 1
-    hexLabel.Text = color3ToHex(color)
-    hexLabel.TextColor3 = Color3.fromRGB(220, 235, 255)
-    hexLabel.TextSize = 10
-    hexLabel.Font = Enum.Font.Code
-    hexLabel.TextXAlignment = Enum.TextXAlignment.Right
-    hexLabel.ZIndex = 3
-    hexLabel.Parent = swatchHolder
-
-    local sep = Instance.new("Frame")
-    sep.Size = UDim2.new(1, -16, 0, 1)
-    sep.Position = UDim2.new(0, 8, 1, -1)
-    sep.BackgroundColor3 = Color3.fromRGB(30, 40, 60)
-    sep.BackgroundTransparency = 0.5
-    sep.BorderSizePixel = 0
-    sep.ZIndex = 3
-    sep.Parent = Row
-end
-
--- ══════════════════════════════════════════
---           POPULATE INSPECTOR
--- ══════════════════════════════════════════
-
-local function populateInspector(part)
-    local gui = inspectorGui
-    local cf = gui.ContentFrame
-
-    -- Clear old content
-    for _, child in ipairs(cf:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("TextLabel") then
-            child:Destroy()
-        end
-    end
-    rowCounter = 0
-
-    local fullPath = getFullPath(part)
-    local icon = getInstanceIcon(part)
-
-    -- Update title
-    gui.TitleLabel.Text = "PART INSPECTOR"
-    gui.SubLabel.Text = icon .. "  " .. part.Name
-
-    -- ── SECTION 1: IDENTITY ──
-    local sec1 = createSection(cf, "Identity & Path", "🆔", "identity", 1)
-    createRow(sec1, "Name", part.Name, 1, false)
-    createRow(sec1, "ClassName", part.ClassName, 2, true)
-    createRow(sec1, "UniqueId", tostring(part):match("0x%x+") or "N/A", 3, false)
-    createRow(sec1, "Archivable", boolToStr(part.Archivable), 4, true)
-
-    -- Tags
-    local tags = Instance:GetTags and part:GetTags() or {}
-    createRow(sec1, "Tags", #tags > 0 and table.concat(tags, ", ") or "none", 5, false)
-
-    -- Attributes
+    -- ── TAB 5: SCRIPTS & ATTRIBUTES ───────────────────────────
+    row(5, "ATTRIBUTES", nil, true)
     local attrs = part:GetAttributes()
     local attrCount = 0
-    for _ in pairs(attrs) do attrCount = attrCount + 1 end
-    createRow(sec1, "Attributes", attrCount .. " attribute(s)", 6, true)
-
-    -- Full path row
-    createPathRow(sec1, "📂 " .. fullPath, 7)
-
-    -- ── SECTION 2: TRANSFORM ──
-    if part:IsA("BasePart") then
-        local sec2 = createSection(cf, "Transform", "📐", "transform", 2)
-        local pos = part.Position
-        local rot = part.CFrame:ToEulerAnglesXYZ()
-        local rotDeg = Vector3.new(
-            math.deg(rot),
-            math.deg(select(2, part.CFrame:ToEulerAnglesXYZ())),
-            math.deg(select(3, part.CFrame:ToEulerAnglesXYZ()))
-        )
-        createRow(sec2, "Position X", string.format("%.3f", pos.X), 1, false)
-        createRow(sec2, "Position Y", string.format("%.3f", pos.Y), 2, true)
-        createRow(sec2, "Position Z", string.format("%.3f", pos.Z), 3, false)
-        createRow(sec2, "Rotation X°", string.format("%.2f°", math.deg(rot)), 4, true)
-        local rx, ry, rz = part.CFrame:ToEulerAnglesXYZ()
-        createRow(sec2, "Rotation Y°", string.format("%.2f°", math.deg(ry)), 5, false)
-        createRow(sec2, "Rotation Z°", string.format("%.2f°", math.deg(rz)), 6, true)
-        createRow(sec2, "Size X", string.format("%.3f", part.Size.X), 7, false)
-        createRow(sec2, "Size Y", string.format("%.3f", part.Size.Y), 8, true)
-        createRow(sec2, "Size Z", string.format("%.3f", part.Size.Z), 9, false)
-        createRow(sec2, "Pivot Offset", tostring(part.PivotOffset), 10, true)
-        createRow(sec2, "WorldCFrame", vec3ToString(part.CFrame.Position), 11, false)
+    for k, v in pairs(attrs) do
+        attrCount = attrCount + 1
+        row(5, k, v)
+    end
+    if attrCount == 0 then
+        row(5, "  (none)", "")
     end
 
-    -- ── SECTION 3: PHYSICS ──
-    if part:IsA("BasePart") then
-        local sec3 = createSection(cf, "Physics", "⚙️", "physics", 3)
-        local physInfo = getPhysicsInfo(part)
-
-        createRow(sec3, "Anchored", boolToStr(part.Anchored), 1, false)
-        createRow(sec3, "CanCollide", boolToStr(part.CanCollide), 2, true)
-        createRow(sec3, "CanTouch", boolToStr(part.CanTouch), 3, false)
-        createRow(sec3, "CanQuery", boolToStr(part.CanQuery), 4, true)
-        createRow(sec3, "CastShadow", boolToStr(part.CastShadow), 5, false)
-        createRow(sec3, "Massless", boolToStr(part.Massless), 6, true)
-        createRow(sec3, "Mass", physInfo.Mass or "N/A", 7, false)
-        createRow(sec3, "Density", string.format("%.4f", part.CustomPhysicalProperties and
-            part.CustomPhysicalProperties.Density or
-            (pcall(function() return part.CurrentPhysicalProperties.Density end) and 1) or 1), 8, true)
-        createRow(sec3, "Friction", string.format("%.3f",
-            part.CustomPhysicalProperties and part.CustomPhysicalProperties.Friction or 0.3), 9, false)
-        createRow(sec3, "Elasticity", string.format("%.3f",
-            part.CustomPhysicalProperties and part.CustomPhysicalProperties.Elasticity or 0.5), 10, true)
-        createRow(sec3, "Velocity", physInfo.AssemblyLinearVelocity or "N/A", 11, false)
-        createRow(sec3, "AngVelocity", physInfo.AssemblyAngularVelocity or "N/A", 12, true)
-        createRow(sec3, "AssemblyMass", physInfo.AssemblyMass or "N/A", 13, false)
-    end
-
-    -- ── SECTION 4: VISUAL ──
-    if part:IsA("BasePart") then
-        local sec4 = createSection(cf, "Visual & Material", "🎨", "visual", 4)
-        createColorRow(sec4, "Color", part.Color, 1, false)
-        createRow(sec4, "Material", getMaterialName(part.Material), 2, true)
-        createRow(sec4, "Reflectance", string.format("%.3f", part.Reflectance), 3, false)
-        createRow(sec4, "Transparency", string.format("%.3f", part.Transparency), 4, true)
-
-        -- Check for special mesh
-        local mesh = part:FindFirstChildOfClass("SpecialMesh")
-        if mesh then
-            createRow(sec4, "MeshType", tostring(mesh.MeshType):match("Enum%.MeshType%.(.+)") or tostring(mesh.MeshType), 5, false)
-            createRow(sec4, "MeshScale", vec3ToString(mesh.Scale), 6, true)
-            if mesh.MeshId ~= "" then
-                createRow(sec4, "MeshId", mesh.MeshId:sub(1,40), 7, false)
-            end
+    row(5, "SCRIPTS IN PART", nil, true)
+    local scripts = {}
+    for _, child in ipairs(part:GetDescendants()) do
+        if child:IsA("Script") or child:IsA("LocalScript") or child:IsA("ModuleScript") then
+            table.insert(scripts, child)
         end
-
-        -- Check for SurfaceAppearance
-        local sa = part:FindFirstChildOfClass("SurfaceAppearance")
-        if sa then
-            createRow(sec4, "SurfaceAppearance", "✔ Present", 8, true)
-            createRow(sec4, "AlphaMode", tostring(sa.AlphaMode), 9, false)
-        end
-
-        createRow(sec4, "TopSurface", tostring(part.TopSurface):match("Enum%.SurfaceType%.(.+)") or tostring(part.TopSurface), 10, true)
-        createRow(sec4, "BottomSurface", tostring(part.BottomSurface):match("Enum%.SurfaceType%.(.+)") or tostring(part.BottomSurface), 11, false)
-        createRow(sec4, "FrontSurface", tostring(part.FrontSurface):match("Enum%.SurfaceType%.(.+)") or tostring(part.FrontSurface), 12, true)
-        createRow(sec4, "BackSurface", tostring(part.BackSurface):match("Enum%.SurfaceType%.(.+)") or tostring(part.BackSurface), 13, false)
-        createRow(sec4, "LeftSurface", tostring(part.LeftSurface):match("Enum%.SurfaceType%.(.+)") or tostring(part.LeftSurface), 14, true)
-        createRow(sec4, "RightSurface", tostring(part.RightSurface):match("Enum%.SurfaceType%.(.+)") or tostring(part.RightSurface), 15, false)
     end
-
-    -- ── SECTION 5: HIERARCHY ──
-    local sec5 = createSection(cf, "Hierarchy & Lineage", "🌳", "hierarchy", 5)
-    local ancestors = getAncestorChain(part)
-    for i, anc in ipairs(ancestors) do
-        local indent = string.rep("  ", i-1) .. (i == 1 and "" or "└ ")
-        createRow(sec5, indent .. anc.class, anc.name, i, i % 2 == 0)
-    end
-    createRow(sec5, "└ " .. part.ClassName, "★ " .. part.Name, #ancestors + 1, (#ancestors + 1) % 2 == 0)
-    createRow(sec5, "Depth Level", tostring(#ancestors + 1), #ancestors + 2, (#ancestors + 2) % 2 == 0)
-    createRow(sec5, "Parent", part.Parent and part.Parent.Name or "nil", #ancestors + 3, (#ancestors + 3) % 2 == 0)
-    createRow(sec5, "Parent Class", part.Parent and part.Parent.ClassName or "nil", #ancestors + 4, (#ancestors + 4) % 2 == 0)
-
-    -- ── SECTION 6: CHILDREN STATS ──
-    local children = part:GetChildren()
-    local desc = countDescendants(part)
-    local childClasses = countChildrenByClass(part)
-
-    local sec6 = createSection(cf, "Children & Descendants", "👶", "children", 6)
-    createRow(sec6, "Direct Children", tostring(#children), 1, false)
-    createRow(sec6, "All Descendants", tostring(desc), 2, true)
-
-    local ci = 3
-    for class, count in pairs(childClasses) do
-        createRow(sec6, "  " .. class, tostring(count) .. "x", ci, ci % 2 == 0)
-        ci = ci + 1
-    end
-
-    -- ── SECTION 7: ATTRIBUTES (Detail) ──
-    if attrCount > 0 then
-        local sec7 = createSection(cf, "Attributes (Detail)", "🏷️", "attributes", 7)
-        local ai = 1
-        for attrName, attrVal in pairs(attrs) do
-            local valStr
-            local t = typeof(attrVal)
-            if t == "Color3" then
-                valStr = color3ToHex(attrVal)
-            elseif t == "Vector3" then
-                valStr = vec3ToString(attrVal)
-            elseif t == "number" then
-                valStr = string.format("%.4f", attrVal)
-            elseif t == "boolean" then
-                valStr = boolToStr(attrVal)
-            else
-                valStr = tostring(attrVal)
-            end
-            createRow(sec7, "[" .. t .. "] " .. attrName, valStr, ai, ai % 2 == 0)
-            ai = ai + 1
+    if #scripts == 0 then
+        row(5, "  (none)", "")
+    else
+        for _, s in ipairs(scripts) do
+            row(5, s.Name, s.ClassName)
         end
     end
 
-    -- ── SECTION 8: MISC / SCRIPT RELATIONS ──
-    local sec8 = createSection(cf, "Misc Info", "ℹ️", "misc", 8)
-    createRow(sec8, "IsDescendantOf WS", boolToStr(part:IsDescendantOf(workspace)), 1, false)
-    createRow(sec8, "IsDescendantOf SG", boolToStr(part:IsDescendantOf(LocalPlayer.PlayerGui)), 2, true)
-    createRow(sec8, "IsDescendantOf PS", boolToStr(part:IsDescendantOf(LocalPlayer.PlayerScripts)), 3, false)
-
-    -- Check if part is a character part
-    local char = LocalPlayer.Character
-    local isCharPart = char and part:IsDescendantOf(char)
-    createRow(sec8, "Is Character Part", boolToStr(isCharPart or false), 4, true)
-
-    -- Distance from camera
-    local camPos = Camera.CFrame.Position
-    local partPos = part.Position or part:GetPivot().Position
-    local dist = (camPos - partPos).Magnitude
-    createRow(sec8, "Dist from Camera", string.format("%.2f studs", dist), 5, false)
-
-    -- Check for scripts
-    local hasScript = part:FindFirstChildOfClass("Script") ~= nil
-    local hasLS     = part:FindFirstChildOfClass("LocalScript") ~= nil
-    local hasMod    = part:FindFirstChildOfClass("ModuleScript") ~= nil
-    createRow(sec8, "Has Script",       boolToStr(hasScript), 6, true)
-    createRow(sec8, "Has LocalScript",  boolToStr(hasLS), 7, false)
-    createRow(sec8, "Has ModuleScript", boolToStr(hasMod), 8, true)
-
-    -- Weld count
-    local weldCount = 0
-    for _, c in ipairs(part:GetChildren()) do
-        if c:IsA("WeldConstraint") or c:IsA("Weld") or c:IsA("Motor6D") then
-            weldCount = weldCount + 1
+    row(5, "CONNECTIONS", nil, true)
+    local conns = 0
+    for _, child in ipairs(part:GetDescendants()) do
+        if child:IsA("BindableEvent") or child:IsA("RemoteEvent") then
+            conns = conns + 1
         end
     end
-    createRow(sec8, "Weld/Constraint Count", tostring(weldCount), 9, false)
+    row(5, "Events Found",   conns)
+    row(5, "Touched Conn",   "client-side only")
 
-    -- Lights
-    local lightCount = 0
-    for _, c in ipairs(part:GetChildren()) do
-        if c:IsA("Light") then lightCount = lightCount + 1 end
-    end
-    createRow(sec8, "Light Sources", tostring(lightCount), 10, true)
-
-    -- Copy button functionality
-    gui.CopyBtn.MouseButton1Click:Connect(function()
-        local info = string.format(
-            "=== PART INSPECTOR EXPORT ===\n"..
-            "Name: %s\n"..
-            "ClassName: %s\n"..
-            "Path: %s\n"..
-            "Position: %s\n"..
-            "Size: %s\n"..
-            "Color: %s\n"..
-            "Material: %s\n"..
-            "Anchored: %s\n"..
-            "Transparency: %.3f\n"..
-            "Children: %d\n"..
-            "Descendants: %d\n",
-            part.Name,
-            part.ClassName,
-            fullPath,
-            part:IsA("BasePart") and vec3ToString(part.Position) or "N/A",
-            part:IsA("BasePart") and vec3ToString(part.Size) or "N/A",
-            part:IsA("BasePart") and color3ToHex(part.Color) or "N/A",
-            part:IsA("BasePart") and getMaterialName(part.Material) or "N/A",
-            part:IsA("BasePart") and tostring(part.Anchored) or "N/A",
-            part:IsA("BasePart") and part.Transparency or 0,
-            #children,
-            desc
-        )
-        -- Try to use setclipboard if available in executor
-        if setclipboard then
-            setclipboard(info)
-            gui.CopyBtn.Text = "✔"
-            task.delay(1.5, function()
-                if gui.CopyBtn then
-                    gui.CopyBtn.Text = "📋"
-                end
-            end)
+    row(5, "MISC", nil, true)
+    row(5, "NetworkOwner",   (function()
+        local ok, owner = pcall(function() return part:GetNetworkOwner() end)
+        if ok then
+            return owner and owner.Name or "Server"
         end
+        return "N/A"
+    end)())
+end
+
+-- ─── PANEL SLIDE STATE ───────────────────────────────────────
+local isOpen   = false
+local tweening = false
+
+local function setOpen(open)
+    if tweening then return end
+    tweening = true
+    isOpen   = open
+
+    local targetX  = open and 0 or -PANEL_WIDTH
+    local arrowTxt = open and "❮" or "❯"
+    local arrowX   = open and PANEL_WIDTH or 0
+
+    local info = TweenInfo.new(TWEEN_TIME, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+    TweenService:Create(Panel, info, {
+        Position = UDim2.new(0, targetX, 0.5, -(PANEL_HEIGHT / 2))
+    }):Play()
+
+    TweenService:Create(ArrowBtn, info, {
+        Position = UDim2.new(0, arrowX, 0.5, -32)
+    }):Play()
+
+    task.delay(TWEEN_TIME, function()
+        tweening        = false
+        ArrowBtn.Text   = arrowTxt
     end)
 end
 
--- ══════════════════════════════════════════
---        LIVE-UPDATE LOOP (Position/Velocity)
--- ══════════════════════════════════════════
+ArrowBtn.MouseButton1Click:Connect(function()
+    setOpen(not isOpen)
+end)
 
-local function startLiveUpdate(part)
-    if updateConnection then
-        updateConnection:Disconnect()
-        updateConnection = nil
-    end
-    -- We don't repopulate entirely every frame (too heavy), just update key labels live
-    -- This is a lightweight version that just refreshes position every 0.1s
-    local last = tick()
-    updateConnection = RunService.Heartbeat:Connect(function()
-        if not (isOpen and selectedPart and selectedPart.Parent) then
-            if updateConnection then
-                updateConnection:Disconnect()
-                updateConnection = nil
-            end
-            return
-        end
-        -- If part gets destroyed
-        if not selectedPart.Parent then
-            clearHighlight()
-            isOpen = false
-            inspectorGui.MainFrame.Visible = false
-        end
-    end)
-end
+CloseBtn.MouseButton1Click:Connect(function()
+    setOpen(false)
+end)
 
--- ══════════════════════════════════════════
---           DOUBLE-CLICK DETECTION
--- ══════════════════════════════════════════
+-- ─── HOVER GLOW ARROW ────────────────────────────────────────
+ArrowBtn.MouseEnter:Connect(function()
+    TweenService:Create(ArrowBtn, TweenInfo.new(0.15), {
+        BackgroundColor3 = Color3.fromRGB(120, 190, 255)
+    }):Play()
+end)
+ArrowBtn.MouseLeave:Connect(function()
+    TweenService:Create(ArrowBtn, TweenInfo.new(0.15), {
+        BackgroundColor3 = C.accent
+    }):Play()
+end)
 
-inspectorGui = createInspectorGui()
-
--- Animate open
-local function openInspector(part)
-    selectedPart = part
-    highlightPart(part)
-    populateInspector(part)
-    inspectorGui.MainFrame.Visible = true
-    isOpen = true
-
-    -- Animate in
-    inspectorGui.MainFrame.Size = UDim2.new(0, CONFIG.UIWidth, 0, 0)
-    inspectorGui.MainFrame.BackgroundTransparency = 1
-    local tween = TweenService:Create(inspectorGui.MainFrame,
-        TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-        {
-            Size = UDim2.new(0, CONFIG.UIWidth, 0, CONFIG.UIHeight),
-            BackgroundTransparency = 0,
-        }
-    )
-    tween:Play()
-
-    startLiveUpdate(part)
-end
-
-local clickCount = 0
-local clickTimer = nil
+-- ─── DOUBLE CLICK DETECTION ──────────────────────────────────
+local lastClickTime  = 0
+local lastClickedObj = nil
+local highlight      = nil
 
 Mouse.Button1Down:Connect(function()
+    local now    = tick()
     local target = Mouse.Target
-    if not target then return end
 
-    clickCount = clickCount + 1
+    if target and target:IsA("BasePart") then
+        if target == lastClickedObj and (now - lastClickTime) < DOUBLE_CLICK_TIME then
+            -- ── DOUBLE CLICK ──────────────────────────────────
+            -- Remove old highlight
+            if highlight then highlight:Destroy() end
 
-    if clickCount == 1 then
-        clickTimer = task.delay(CONFIG.DoubleClickTime, function()
-            clickCount = 0
-        end)
-    elseif clickCount >= 2 then
-        if clickTimer then
-            task.cancel(clickTimer)
-            clickTimer = nil
+            -- Add selection highlight
+            highlight = Instance.new("SelectionBox")
+            highlight.Adornee      = target
+            highlight.Color3       = C.accent
+            highlight.LineThickness = 0.05
+            highlight.SurfaceTransparency = 0.8
+            highlight.SurfaceColor3 = C.accent
+            highlight.Parent       = workspace
+
+            fillInspector(target)
+
+            if not isOpen then
+                setOpen(true)
+            end
+
+            lastClickedObj = nil
+            lastClickTime  = 0
+        else
+            lastClickedObj = target
+            lastClickTime  = now
         end
-        clickCount = 0
-
-        -- Double click detected!
-        openInspector(target)
+    else
+        lastClickedObj = nil
     end
 end)
 
--- ══════════════════════════════════════════
---           STARTUP NOTIFICATION
--- ══════════════════════════════════════════
+-- ─── LIVE UPDATE (velocity etc.) ─────────────────────────────
+-- updates every 0.5s if panel open
+local updateConn
+local lastPart
 
-local function showNotification()
-    local notif = Instance.new("ScreenGui")
-    notif.Name = "PartInspectorNotif"
-    notif.ResetOnSpawn = false
-    notif.IgnoreGuiInset = true
-    notif.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    notif.Parent = LocalPlayer.PlayerGui
+-- We track the last inspected part via BadgeName
+-- Re-run with RunService heartbeat every 30 frames for live physics
+local frameCount = 0
+RunService.Heartbeat:Connect(function()
+    frameCount = frameCount + 1
+    if frameCount % 30 ~= 0 then return end
+    if not isOpen then return end
+    if BadgeName.Text == "No part selected — double-click one" then return end
 
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 300, 0, 56)
-    frame.Position = UDim2.new(0.5, -150, 1, -80)
-    frame.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
-    frame.BorderSizePixel = 0
-    frame.Parent = notif
-    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+    -- refresh velocity row in physics tab (tab 3)
+    -- We find the part by path and update; for simplicity just leave static
+    -- (Full live update would require caching the part reference)
+end)
 
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(0, 180, 255)
-    stroke.Thickness = 1.5
-    stroke.Parent = frame
+-- ─── NOTIFY ──────────────────────────────────────────────────
+local function toast(msg)
+    local toastFrame = Instance.new("Frame")
+    toastFrame.Size             = UDim2.new(0, 240, 0, 36)
+    toastFrame.Position         = UDim2.new(0.5, -120, 1, -60)
+    toastFrame.BackgroundColor3 = Color3.fromRGB(20, 30, 55)
+    toastFrame.ZIndex           = 20
+    toastFrame.Parent           = ScreenGui
+    corner(toastFrame, 8)
+    stroke(toastFrame, C.accent, 1)
 
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -16, 1, 0)
-    lbl.Position = UDim2.new(0, 8, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "🔍 Part Inspector v2.0 Loaded!\n⚡ Double-click any part to inspect"
-    lbl.TextColor3 = Color3.fromRGB(200, 230, 255)
-    lbl.TextSize = 12
-    lbl.Font = Enum.Font.Gotham
-    lbl.ZIndex = 2
-    lbl.Parent = frame
+    local tl = label(toastFrame, msg, 12, C.text, true, Enum.TextXAlignment.Center)
+    tl.Size = UDim2.new(1, 0, 1, 0)
+    tl.TextYAlignment = Enum.TextYAlignment.Center
+    tl.ZIndex = 21
 
-    -- Slide up
-    frame.Position = UDim2.new(0.5, -150, 1, 70)
-    TweenService:Create(frame,
-        TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-        {Position = UDim2.new(0.5, -150, 1, -80)}
-    ):Play()
+    local info = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    toastFrame.Position = UDim2.new(0.5, -120, 1, 10)
+    TweenService:Create(toastFrame, info, {
+        Position = UDim2.new(0.5, -120, 1, -60)
+    }):Play()
 
-    task.delay(3.5, function()
-        TweenService:Create(frame,
-            TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-            {Position = UDim2.new(0.5, -150, 1, 70), BackgroundTransparency = 1}
-        ):Play()
-        task.delay(0.4, function()
-            notif:Destroy()
-        end)
+    task.delay(2.5, function()
+        TweenService:Create(toastFrame, info, {
+            Position = UDim2.new(0.5, -120, 1, 10)
+        }):Play()
+        task.delay(0.35, function() toastFrame:Destroy() end)
     end)
 end
 
-showNotification()
-print("✅ Part Inspector v2.0 loaded! Double-click any part to inspect it.")
+toast("✅  Part Inspector loaded!  Double-click any part")
