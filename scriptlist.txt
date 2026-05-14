@@ -535,3 +535,8 @@ BuildBridgetoBrainrots
 DontStealBrainrotFromBase
 FlyUp
 MonkeyBombTag
+BeAHair
+BeFlashForBrainrots
+EscapeRainForLuckyBlocks
+SuperTag
+TraitorVSSheriffDUELS
