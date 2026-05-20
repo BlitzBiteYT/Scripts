@@ -326,10 +326,14 @@ function Lib:CreateWindow(cfg)
             win.Visible = true
             Tween(win, { Size = UDim2.new(0,580,0,420) }, 0.2)
         else
-            Tween(win, { Size = UDim2.new(0,0,0,0) }, 0.2)
-                :Completed:Connect(function()
-                    win.Visible = false
-                end)
+            -- Store tween in local so we can access .Completed
+            -- without the :Completed chaining that Lua 5.1
+            -- rejects at compile time.
+            local hideTween =
+                Tween(win, { Size = UDim2.new(0,0,0,0) }, 0.2)
+            hideTween.Completed:Connect(function()
+                win.Visible = false
+            end)
         end
     end
 
@@ -797,9 +801,10 @@ function Lib:CreateWindow(cfg)
                     Tween(btn,{
                         BackgroundColor3 = Theme.AccentPrimary
                     }, 0.1)
-                    Tween(btn,{
+                    local btnTween = Tween(btn,{
                         BackgroundColor3 = Theme.SectionBg
-                    }, 0.15).Completed:Connect(cb)
+                    }, 0.15)
+                    btnTween.Completed:Connect(cb)
                 end)
                 btn.MouseEnter:Connect(function()
                     Tween(btn,{
