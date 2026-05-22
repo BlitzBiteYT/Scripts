@@ -540,3 +540,11 @@ BeFlashForBrainrots
 EscapeRainForLuckyBlocks
 SuperTag
 TraitorVSSheriffDUELS
+1SpeedCollectMinion
+AgeOfTitans
+GetHEAVYforBrainrots
+KickALuckyBlockforSoccerCards
+RaceYourLuckyBlock
+SlideFromTop
+SplitorStealBrainrot
+TreesHateYou
